@@ -230,6 +230,12 @@ def test_quartiles_exclude_terminated_employee(tmp_path: Path) -> None:
     assert body["p25_salary_usd_scaled"] == "5000000"
     assert body["p50_salary_usd_scaled"] == "6500000"
     assert body["p75_salary_usd_scaled"] == "11000000"
+    print(
+        "inclusive quartiles "
+        f"p25={body['p25_salary_usd_scaled']} "
+        f"p50={body['p50_salary_usd_scaled']} "
+        f"p75={body['p75_salary_usd_scaled']}"
+    )
     assert body["by_department"] == [
         {
             "department_id": 1,

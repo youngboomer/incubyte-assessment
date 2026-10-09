@@ -470,6 +470,7 @@ def test_stale_version_is_409_and_writes_nothing(api: Api) -> None:
     ) == [("20000", 2)]
     reasons = _query(api.db_path, "SELECT reason FROM compensation_audit_logs")
     assert reasons == [("First",)]
+    print(f"409 detail={stale.json()['detail']} audit_reasons={reasons}")
 
 
 def test_compensation_missing_employee_is_404(api: Api) -> None:

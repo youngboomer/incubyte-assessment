@@ -420,6 +420,7 @@ def test_salary_usd_scaled_orders_99_before_100(tmp_path: Path) -> None:
             "ORDER BY CAST(salary_usd_scaled AS INTEGER)"
         ).fetchall()
         assert [row[0] for row in ordered] == ["99", "100"]
+        print('salary order "99" before "100"')
     finally:
         connection.close()
 
@@ -460,6 +461,7 @@ async def _assert_ten_thousand(conn: AsyncConnection) -> None:
         local = scaled_to_decimal(base, scale) + scaled_to_decimal(variable, scale)
         expected = decimal_to_scaled(local / scaled_to_decimal(rate, 6), 2)
         assert usd == expected
+    print(f"USD invariant held for {len(pay_rows)} rows")
 
     status_counts = dict(
         (await conn.exec_driver_sql("SELECT status, COUNT(*) FROM employees GROUP BY status")).all()
