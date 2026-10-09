@@ -43,7 +43,7 @@ nav button {
   text-decoration: underline;
 }
 
-form {
+form.stack {
   display: grid;
   gap: 0.75rem;
   max-width: 20rem;

@@ -9,7 +9,7 @@ export function LoginForm() {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
 
   return (
-    <form action={formAction}>
+    <form className="stack" action={formAction}>
       <label>
         Email
         <input name="email" type="email" autoComplete="username" required />
