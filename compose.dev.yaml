@@ -1,0 +1,6 @@
+# Day-to-day stack. Frontend stays on host port 65525.
+# Backend stays on the internal network at port 65524, with no host mapping.
+services:
+  proxy:
+    profiles:
+      - proxy

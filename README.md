@@ -24,12 +24,12 @@ Application images land in the foundation PR. Until then, this repository is the
 
 When Compose is in place:
 
-- `docker compose -f compose.yaml -f compose.dev.yaml up --build` publishes the frontend on port 3000. The backend has no host port.
-- `docker compose up --build` starts nginx-proxy-manager on ports 80, 443, and 81.
+- `docker compose -f compose.yaml -f compose.dev.yaml up --build` hosts the frontend on port 65525. The backend listens on 65524 inside the Docker network and has no host port.
+- `docker compose up --build` also starts nginx-proxy-manager on ports 80, 443, and 81.
 
 Proxy host, set once in the nginx-proxy-manager UI:
 
-- Forward hostname `frontend`, port `3000`, scheme `http`
+- Forward hostname `frontend`, port `65525`, scheme `http`
 - Websockets on
 - No proxy host and no location block for the backend
 

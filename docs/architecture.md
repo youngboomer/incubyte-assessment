@@ -5,7 +5,7 @@
 - Backend: Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, `sqlite+aiosqlite`.
 - Database: one SQLite file. The brief seeds 10,000 employees. Indexes, search, and pagination are built so 100,000 rows do not force a rewrite.
 - Frontend: Next.js (App Router), TypeScript, Tailwind, shadcn/ui, TanStack Table, Recharts.
-- Deploy: Docker Compose and nginx-proxy-manager. Only the proxy publishes host ports.
+- Deploy: Docker Compose and nginx-proxy-manager. The frontend is hosted on port 65525. The backend listens on port 65524 and is not published to the host.
 
 Routes that perform I/O are `async def` and `await` an `AsyncSession`. A blocking SQLite call does not run on the event loop. `aiosqlite` runs the file driver on a worker thread under that async API. One Uvicorn worker, because SQLite has a single writer. WAL and `busy_timeout` cover a rare overlapping write. This scales row count for one HR user. Many hosts writing at once would be Postgres, which this submission does not need.
 
@@ -40,21 +40,22 @@ No CORS. The browser never calls FastAPI.
 
 ```text
 Internet
-  └─ nginx-proxy-manager     host ports 80, 443, 81
+  ├─ host port 65525 ──────────────► frontend
+  └─ nginx-proxy-manager            host ports 80, 443, 81
         └─ network: web
-             └─ frontend     Next.js :3000, no host ports
+             └─ frontend            Next.js listens on 65525
                   └─ network: internal
-                       └─ backend   FastAPI :8000, no host ports
+                       └─ backend   FastAPI listens on 65524, no host port
                             └─ volume: /data/comppulse.db
 ```
 
-`internal` is a Compose network with `internal: true`. The backend is attached only to that network, so the proxy cannot route to it and the host cannot open port 8000. The frontend is on both networks and calls `BACKEND_URL=http://backend:8000` from the server. `BACKEND_URL` is not a `NEXT_PUBLIC_` variable.
+`internal` is a Compose network with `internal: true`. The backend is attached only to that network, so the proxy cannot route to it and the host has no mapping for port 65524. The frontend is on both networks and calls `BACKEND_URL=http://backend:65524` from the server. `BACKEND_URL` is not a `NEXT_PUBLIC_` variable.
 
 Login: FastAPI checks `HR_EMAIL` and `HR_PASSWORD` and returns a bearer token signed with `itsdangerous.TimestampSigner` and `APP_SECRET`, max age `TOKEN_MAX_AGE_SECONDS`. The Next.js login action stores it in the httpOnly cookie `comppulse_session`. Later server calls send `Authorization: Bearer`. Logout deletes the cookie. `POST /auth/login` and `GET /health` are the only unauthenticated routes.
 
-`compose.yaml` runs proxy, frontend, and backend. `compose.dev.yaml` publishes frontend port 3000 and does not start the proxy. The backend stays unpublished.
+`compose.yaml` publishes `65525:65525` for the frontend and runs the proxy, frontend, and backend. `compose.dev.yaml` keeps that frontend mapping and does not start the proxy. The backend container port stays 65524 with no `ports:` entry.
 
-nginx-proxy-manager (`jc21/nginx-proxy-manager`) has one proxy host: forward hostname `frontend`, port `3000`, scheme `http`, websockets on. No second name. No location block for the backend.
+nginx-proxy-manager (`jc21/nginx-proxy-manager`) has one proxy host: forward hostname `frontend`, port `65525`, scheme `http`, websockets on. No second name. No location block for the backend.
 
 ## Money
 

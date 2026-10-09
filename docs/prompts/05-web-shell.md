@@ -13,7 +13,8 @@ Login, layout, and a server-side client for FastAPI.
 
 ## Rules
 - Server code calls `BACKEND_URL` with the bearer token
-- Do not add `NEXT_PUBLIC_API_URL` or publish port 8000
+- Do not add `NEXT_PUBLIC_API_URL` or publish port 65524
+- The Next.js process listens on 65525
 - 401 sends the user to `/login`
 - Types match `docs/api-contract.md`. Do not rename fields
 

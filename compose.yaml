@@ -1,0 +1,52 @@
+services:
+  proxy:
+    image: jc21/nginx-proxy-manager:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81"
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - web
+
+  frontend:
+    build: ./web
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:65524
+      PORT: "65525"
+    ports:
+      - "65525:65525"
+    networks:
+      - web
+      - internal
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/comppulse.db
+      APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
+      HR_EMAIL: ${HR_EMAIL:-hr@acme.test}
+      HR_PASSWORD: ${HR_PASSWORD:-compulse-demo}
+      TOKEN_MAX_AGE_SECONDS: ${TOKEN_MAX_AGE_SECONDS:-43200}
+      SEED_COUNT: ${SEED_COUNT:-10000}
+    volumes:
+      - db_data:/data
+    networks:
+      - internal
+
+networks:
+  web:
+  internal:
+    internal: true
+
+volumes:
+  npm_data:
+  npm_letsencrypt:
+  db_data:

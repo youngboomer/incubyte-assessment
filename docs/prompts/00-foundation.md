@@ -14,10 +14,12 @@ Boot FastAPI, the SQLite schema, the money module, and a Next.js shell that can 
 - Follow `docs/architecture.md` and `docs/api-contract.md`
 - Async SQLAlchemy, `sqlite+aiosqlite`, `NullPool`, one schema initializer for FTS5 and triggers
 - Money tests: `"12000050"` at scale 2 is `Decimal("120000.50")`; JPY scale 0; reject `"12.00"` and `"1e5"`; half-even back to digits
-- Do not publish backend port 8000
+- Frontend listens on 65525 and is published as `65525:65525`
+- Backend listens on 65524. Do not publish that port
+- `BACKEND_URL` is `http://backend:65524`
 - Do not add CORS, Faker, Postgres, or a float money column
 
 ## Done when
 - `GET /health` returns `{"status":"ok"}` through `TestClient`
 - `pytest` and `tsc --noEmit` pass
-- `compose.dev.yaml` serves the shell on host port 3000 and the backend has no host port
+- The frontend is hosted on port 65525 and the backend has no host port
