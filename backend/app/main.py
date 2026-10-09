@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.db import create_db_engine, init_schema, session_factory
 from app.routers import routers
+from app.seed import seed_if_empty
 from app.settings import Settings
 
 
@@ -16,6 +17,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await init_schema(app.state.engine)
+        await seed_if_empty(app.state.engine, app_settings.seed_count)
         yield
         await app.state.engine.dispose()
 
