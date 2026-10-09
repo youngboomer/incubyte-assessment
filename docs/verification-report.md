@@ -13,7 +13,7 @@ Exercised:
 - A separate 100,000-row process on its own SQLite file.
 - Server-rendered HTML for login, directory, dashboard, profile, and FX, including empty, error, and conflict states.
 
-Out of this run: the demo video, nginx-proxy-manager (it is not running on this machine), and GitHub Actions (the account billing limit stops the jobs before they execute).
+Out of this run: the demo video, and GitHub Actions (the account billing limit stops the jobs before they execute). nginx-proxy-manager is the host service `npm.service`, not a Compose service. A later live check is in Leftovers.
 
 ## Second pass
 
@@ -158,7 +158,8 @@ The whole program is not O(1). Costs below follow the plans in `load.log`, not a
 ## Leftovers
 
 - The demo video is not recorded. The spoken script is in the README. Recording it is outside this run.
-- nginx-proxy-manager is not on this machine. The reachable app is `127.0.0.1:65525`. When the host service is present, it forwards to that port with scheme `http` and websockets on, and it does not forward to 65524.
+- The frontend runtime image is the Next.js standalone server. After the rebuild it is 442MB, down from 1.35GB, and the container runs `next-server` at about 57MB. The backend image is 273MB, one Uvicorn worker, about 61MB, with no host port.
+- nginx-proxy-manager is the host unit `npm.service` (enabled, active). It is not a container, and `compose.yaml` does not define it. Proxy host `incubyte.iamcktyagi.com` forwards to `127.0.0.1` port `65525`, scheme `http`, with the websocket upgrade headers. No proxy host forwards to `65524`. A live check on 2026-10-09: `https://incubyte.iamcktyagi.com/` returned HTTP 200 with `CompPulse` and `{"status":"ok"}`; the login form POST returned HTTP 303 and an httpOnly `comppulse_session` cookie; the signed-in dashboard showed headcount 9576, the same figure as `GET /analytics/overview` on the internal backend. Direct `127.0.0.1:65525` did the same. A connect to `127.0.0.1:65524` was refused. The live database has 10,000 employees, 9,576 active, journal mode WAL, and `idx_emp_base_salary`.
 - GitHub Actions cannot be used as a check until the account billing limit is cleared. The local results are ruff, 86 pytest passes, the Compose launch, the end-to-end script, and the 100,000-row script.
 - An earlier profile called the India salary page an O(limit) seek on `idx_emp_salary_usd`. `EXPLAIN QUERY PLAN` shows `idx_emp_status_country` and `USE TEMP B-TREE FOR ORDER BY`. The load log quoted above replaces that description. `logical-tests.log` is `RUFF_EXIT:0` and `86 passed in 7.33s`.
 - UI states were confirmed in server-rendered HTML. A desktop browser did not click the pages.

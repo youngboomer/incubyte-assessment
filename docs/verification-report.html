@@ -49,7 +49,7 @@
     <li>A separate 100,000-row process on its own SQLite file.</li>
     <li>Server-rendered HTML for login, directory, dashboard, profile, and FX, including empty, error, and conflict states.</li>
   </ul>
-  <p>Out of this run: the demo video, nginx-proxy-manager (it is not running on this machine), and GitHub Actions (the account billing limit stops the jobs before they execute).</p>
+  <p>Out of this run: the demo video, and GitHub Actions (the account billing limit stops the jobs before they execute). nginx-proxy-manager is the host service <code>npm.service</code>, not a Compose service. A later live check is in Leftovers.</p>
 
   <h2 id="second">Second pass</h2>
   <p>Each locked rule has a citation from a test name or a captured response.</p>
@@ -213,7 +213,8 @@ EXIT:0</pre>
   <h2 id="leftovers">Leftovers</h2>
   <ul>
     <li>The demo video is not recorded. The spoken script is in the README. Recording it is outside this run.</li>
-    <li>nginx-proxy-manager is not on this machine. The reachable app is <code>127.0.0.1:65525</code>. When the host service is present, it forwards to that port with scheme <code>http</code> and websockets on, and it does not forward to 65524.</li>
+    <li>The frontend runtime image is the Next.js standalone server. After the rebuild it is 442MB, down from 1.35GB, and the container runs <code>next-server</code> at about 57MB. The backend image is 273MB, one Uvicorn worker, about 61MB, with no host port.</li>
+    <li>nginx-proxy-manager is the host unit <code>npm.service</code> (enabled, active). It is not a container, and <code>compose.yaml</code> does not define it. Proxy host <code>incubyte.iamcktyagi.com</code> forwards to <code>127.0.0.1</code> port <code>65525</code>, scheme <code>http</code>, with the websocket upgrade headers. No proxy host forwards to <code>65524</code>. A live check on 2026-10-09: <code>https://incubyte.iamcktyagi.com/</code> returned HTTP 200 with <code>CompPulse</code> and <code>{"status":"ok"}</code>; the login form POST returned HTTP 303 and an httpOnly <code>comppulse_session</code> cookie; the signed-in dashboard showed headcount 9576, the same figure as <code>GET /analytics/overview</code> on the internal backend. Direct <code>127.0.0.1:65525</code> did the same. A connect to <code>127.0.0.1:65524</code> was refused. The live database has 10,000 employees, 9,576 active, journal mode WAL, and <code>idx_emp_base_salary</code>.</li>
     <li>GitHub Actions cannot be used as a check until the account billing limit is cleared. The local results are ruff, 86 pytest passes, the Compose launch, the end-to-end script, and the 100,000-row script.</li>
     <li>An earlier profile called the India salary page an O(limit) seek on <code>idx_emp_salary_usd</code>. <code>EXPLAIN QUERY PLAN</code> shows <code>idx_emp_status_country</code> and <code>USE TEMP B-TREE FOR ORDER BY</code>. The load log quoted above replaces that description. <code>logical-tests.log</code> is <code>RUFF_EXIT:0</code> and <code>86 passed in 7.33s</code>.</li>
     <li>UI states were confirmed in server-rendered HTML. A desktop browser did not click the pages.</li>
