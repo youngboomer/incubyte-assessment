@@ -8,9 +8,9 @@ Prove the deploy topology and record measured performance.
 - Compose smoke check
 
 ## Rules
-- nginx-proxy-manager is the only published service in `compose.yaml`
+- `compose.yaml` does not define a proxy service
 - Frontend container can `GET http://backend:65524/health`
-- Host port 65525 serves the frontend
+- `127.0.0.1:65525` serves the frontend
 - Host port 65524 is closed
 - `scripts/check_perf.py` seeds 100,000 and records seed time, a filtered page, a deep keyset page, and the analytics query
 - Demo credentials and the NPM proxy-host settings stay in the README

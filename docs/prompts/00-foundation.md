@@ -8,7 +8,8 @@ Boot FastAPI, the SQLite schema, the money module, and a Next.js shell that can 
 - Empty routers registered in one list: health, auth, employees, analytics, fx
 - `GET /health` only. Other routers return 404 until their PR
 - `web/` Next.js shell that server-fetches `BACKEND_URL/health`
-- `compose.yaml`, `compose.dev.yaml`, Dockerfiles, GitHub Actions (ruff, pytest, `tsc`)
+- Dockerfiles and GitHub Actions (ruff, pytest, `tsc`)
+- Do not edit `compose.yaml`. The orchestrator owns it.
 
 ## Rules
 - Follow `docs/architecture.md` and `docs/api-contract.md`

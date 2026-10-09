@@ -1,33 +1,22 @@
 services:
-  proxy:
-    image: jc21/nginx-proxy-manager:2
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "81:81"
-    volumes:
-      - npm_data:/data
-      - npm_letsencrypt:/etc/letsencrypt
-    networks:
-      - web
-
   frontend:
     build: ./web
+    container_name: comppulse-frontend
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:65524
       PORT: "65525"
+      HOSTNAME: "0.0.0.0"
     ports:
-      - "65525:65525"
+      - "127.0.0.1:65525:65525"
     networks:
-      - web
       - internal
     depends_on:
       - backend
 
   backend:
     build: ./backend
+    container_name: comppulse-backend
     restart: unless-stopped
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/comppulse.db
@@ -42,11 +31,8 @@ services:
       - internal
 
 networks:
-  web:
   internal:
     internal: true
 
 volumes:
-  npm_data:
-  npm_letsencrypt:
   db_data:

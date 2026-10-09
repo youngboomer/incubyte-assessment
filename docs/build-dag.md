@@ -1,6 +1,6 @@
 # Build DAG
 
-Frontend is hosted on port **65525**. Backend listens on port **65524** and is not published to the host. `BACKEND_URL=http://backend:65524`.
+Frontend is hosted on `127.0.0.1:65525` for the nginx-proxy-manager host service. Backend listens on port **65524** and is not published to the host. `BACKEND_URL=http://backend:65524`. Compose does not start a proxy container.
 
 Edges mean “must be merged before the child starts.” Nodes in the same level touch different directories and run in parallel.
 
@@ -34,4 +34,4 @@ spec (docs/specs)
 | profile-ui | `docs/prompts/08-profile-ui.md` | profile and `/settings/fx` |
 | integration | `docs/prompts/09-integration.md` | compose smoke and performance note |
 
-Compose files are shared. Level-0 agents do not edit them. The orchestrator owns `compose.yaml` and `compose.dev.yaml`.
+`compose.yaml` is shared. Level-0 agents do not edit it. The orchestrator owns it. There is no proxy service in Compose.
