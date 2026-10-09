@@ -11,14 +11,17 @@ import styles from "./profile.module.css";
 
 export default async function EmployeeProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await connection();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) redirect("/login");
 
   const { id } = await params;
+  const conflict = (await searchParams).conflict === "1";
   const employeePath = `/employees/${encodeURIComponent(id)}`;
 
   let employeeResponse: Response;
@@ -101,6 +104,12 @@ export default async function EmployeeProfilePage({
         </dl>
         <section className={styles.section}>
           <h2>Change pay</h2>
+          {conflict ? (
+            <p className={styles.error}>
+              Record was modified. Reload and try again.{" "}
+              <a href={employeePath}>Reload</a>
+            </p>
+          ) : null}
           <PayForm
             employeeId={id}
             salaryScale={employeeBody.salary_scale}

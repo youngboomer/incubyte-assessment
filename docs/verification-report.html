@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CompPulse verification report</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font: 16px/1.5 "Iowan Old Style", Palatino, Georgia, serif; color: #1c1917; background: #f7f5f2; }
+    main { max-width: 58rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.4rem; }
+    h2 { font-size: 1.35rem; margin: 2.2rem 0 0.6rem; border-top: 1px solid #d6d3d1; padding-top: 1.2rem; }
+    p, li { margin: 0.4rem 0; }
+    a { color: #1d4ed8; }
+    nav ul { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; padding: 0; margin: 1rem 0 0; list-style: none; }
+    table { width: 100%; border-collapse: collapse; margin: 0.8rem 0 1rem; background: #fff; font-size: 0.92rem; }
+    th, td { border: 1px solid #d6d3d1; padding: 0.45rem 0.55rem; text-align: left; vertical-align: top; }
+    th { background: #eceae6; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    code, pre { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.84rem; }
+    pre { background: #1c1917; color: #f5f5f4; padding: 0.9rem 1rem; overflow: auto; line-height: 1.45; }
+    .meta { color: #57534e; margin-top: 0; }
+    .pass { color: #166534; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>CompPulse verification report</h1>
+  <p class="meta">Date: 2026-10-09. Stack under test: Compose frontend on <code>127.0.0.1:65525</code>, backend on the internal Docker network only. Evidence is quoted from the captured runs. A line is marked pass only when that run printed it.</p>
+  <nav>
+    <ul>
+      <li><a href="#scope">Scope checked</a></li>
+      <li><a href="#second">Second pass</a></li>
+      <li><a href="#logical">Logical</a></li>
+      <li><a href="#e2e">E2E</a></li>
+      <li><a href="#ui">UI/UX</a></li>
+      <li><a href="#load">Stress/load</a></li>
+      <li><a href="#profile">Profile</a></li>
+      <li><a href="#leftovers">Leftovers</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="scope">Scope checked</h2>
+  <p>Checked against <code>docs/prd.md</code>, <code>docs/architecture.md</code>, and <code>docs/api-contract.md</code> after the directory, dashboard, and profile screens were on <code>main</code>.</p>
+  <p>Exercised:</p>
+  <ul>
+    <li>Login as <code>hr@acme.test</code>, filtered directory, keyset-backed pages, CSV of that filter, add-employee path covered by the directory suite, profile local pay and USD, pay change with reason and effective date, append-only audit, stale version, planning-rate edit, and the active-employee dashboard.</li>
+    <li>Backend suite on its own temporary databases: money conversion, FTS sanitizer, keyset directory, inclusive quartiles, half-even mean, compensation conflict, FX recompute, audit immutability, and the 10,000-row seed.</li>
+    <li>A separate 100,000-row process on its own SQLite file.</li>
+    <li>Server-rendered HTML for login, directory, dashboard, profile, and FX, including empty, error, and conflict states.</li>
+  </ul>
+  <p>Out of this run: the demo video, nginx-proxy-manager (it is not running on this machine), and GitHub Actions (the account billing limit stops the jobs before they execute).</p>
+
+  <h2 id="second">Second pass</h2>
+  <p>Each locked rule has a citation from a test name or a captured response.</p>
+  <table>
+    <thead>
+      <tr><th>Rule</th><th>Result</th><th>Citation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Money is a scaled digit string. JSON does not carry salary floats.</td>
+        <td class="pass">Pass</td>
+        <td><code>tests/test_money.py::test_scaled_usd_cents</code> PASSED. <code>tests/test_money.py::test_rejects_float_amount</code> PASSED. <code>tests/test_money.py::test_rejects_non_digit_strings[12.00]</code> and <code>[1e5]</code> PASSED. <code>e2e.log</code>: <code>directory_status=200 country=IN status=active scaled_digit_strings=True</code>. The directory and profile checks rejected float JSON fields before that line was written.</td>
+      </tr>
+      <tr>
+        <td>Search is FTS5 (<code>unicode61 remove_diacritics 2</code>), not Porter and not a search <code>LIKE</code>.</td>
+        <td class="pass">Pass</td>
+        <td><code>tests/test_directory.py::test_sanitize_fts_query</code> PASSED. <code>tests/test_directory.py::test_query_with_quotes_and_colon_returns_200</code> PASSED. <code>load.log</code>: <code>search_page seconds=0.0235 offset_param=0 row_skip=no complexity=FTS-prefix-not-O(1)</code> and <code>search_total=3116</code>. Employee-number allocation still uses <code>LIKE 'EMP-%'</code>. That statement is not the directory search.</td>
+      </tr>
+      <tr>
+        <td>Directory pages are keyset seeks. The application does not skip rows with OFFSET.</td>
+        <td class="pass">Pass</td>
+        <td><code>tests/test_directory.py::test_page_size_and_keyset</code> PASSED. <code>tests/test_directory.py::test_bad_cursor_and_sort_mismatch</code> PASSED. <code>load.log</code>: <code>filtered_page seconds=0.0575 offset_param=0 row_skip=no</code> and <code>deep_keyset_page seconds=0.0405 offset_param=0 row_skip=no</code> with <code>deep_page_reached pages=40 items=50 has_next=True</code>. SQLAlchemy's SQLite dialect still renders <code>OFFSET 0</code>. The bound offset was 0, so those statements did not skip rows. The application source does not call <code>offset()</code>.</td>
+      </tr>
+      <tr>
+        <td>A stale <code>version_id</code> returns 409 and writes no audit row.</td>
+        <td class="pass">Pass</td>
+        <td><code>tests/test_compensation.py::test_stale_version_is_409_and_writes_nothing</code> printed <code>409 detail=Record was modified. Reload and try again. audit_reasons=[('First',)]</code> and PASSED. <code>e2e.log</code>: <code>stale_message=Record was modified. Reload and try again.</code> and <code>audit_after_stale raise=6 stale=0</code>. <code>load.log</code>: <code>stale_status=409 audit_rows=1</code> after one successful pay update. The stale reason was not inserted.</td>
+      </tr>
+      <tr>
+        <td>Quartiles use inclusive percentiles.</td>
+        <td class="pass">Pass</td>
+        <td><code>tests/test_analytics.py::test_quartiles_exclude_terminated_employee</code> printed <code>inclusive quartiles p25=5000000 p50=6500000 p75=11000000</code> and PASSED. The fixture salaries are 40000, 50000, 50000, 80000, 120000, and 300000.</td>
+      </tr>
+      <tr>
+        <td>The mean is a <code>Decimal</code>. The overview does not use SQLite <code>AVG</code>.</td>
+        <td class="pass">Pass</td>
+        <td><code>tests/test_analytics.py::test_mean_half_even</code> PASSED. That fixture expects Engineering average <code>"100"</code> and Finance average <code>"102"</code>. <code>backend/app/stats.py</code> computes <code>Decimal(sum_cents) / Decimal(100) / Decimal(count)</code>. No <code>AVG</code> call is in the application package.</td>
+      </tr>
+      <tr>
+        <td>The seed is deterministic, the default count is 10,000, and 100,000 rows load.</td>
+        <td class="pass">Pass</td>
+        <td><code>backend/app/settings.py</code> sets <code>seed_count: int = 10000</code>. <code>backend/app/seed.py</code> uses <code>Random(42)</code>. <code>tests/test_seed.py::test_seed_ten_thousand_golden_row_and_invariants</code> printed <code>USD invariant held for 10000 rows</code> and PASSED. <code>tests/test_seed.py::test_seed_without_reset_keeps_a_changed_planning_rate</code> PASSED. <code>load.log</code>: <code>seed count=100000 seconds=26.2032 complexity=O(n)</code> and <code>load_ok</code> with <code>EXIT:0</code>.</td>
+      </tr>
+      <tr>
+        <td>The browser does not call FastAPI.</td>
+        <td class="pass">Pass</td>
+        <td><code>e2e.log</code> drives <code>http://127.0.0.1:65525</code> and records <code>login_status=303 cookie=comppulse_session</code>. <code>ui.log</code>: <code>method=server-rendered HTML through http://127.0.0.1:65525</code>. <code>launch.log</code>: <code>container_health={"status":"ok"}</code> from inside the frontend container. <code>web/lib/api.ts</code> throws if <code>window</code> is defined.</td>
+      </tr>
+      <tr>
+        <td>The backend has no host port.</td>
+        <td class="pass">Pass</td>
+        <td><code>launch.log</code> lists <code>comppulse-backend</code> with an empty PORTS column and <code>comppulse-frontend</code> as <code>127.0.0.1:65525-&gt;65525/tcp</code>. The same log records <code>HOST_65524=closed</code>. A repeat of the frontend GET is the second <code>HTTP/1.1 200 OK</code> with <code>front2 CompPulse=True health=True</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p><code>tests/test_directory.py::test_salary_numeric_order</code> printed <code>salary order "99" before "100"</code> and PASSED. <code>tests/test_compensation.py::test_fx_recompute_does_not_rewrite_audit_snapshots</code> PASSED.</p>
+
+  <h2 id="logical">Logical</h2>
+  <p>Command result captured in <code>logical-tests.log</code>, after the hyphen split was in the tree:</p>
+  <ul>
+    <li><code>All checks passed!</code></li>
+    <li><code>RUFF_EXIT:0</code></li>
+    <li><code>85 passed in 7.32s</code></li>
+    <li><code>PYTEST_EXIT:0</code></li>
+  </ul>
+  <p>The run also printed the four locked strings named in the verification plan: the 409 detail and <code>audit_reasons=[('First',)]</code>, <code>salary order "99" before "100"</code>, <code>inclusive quartiles p25=5000000 p50=6500000 p75=11000000</code>, and <code>USD invariant held for 10000 rows</code>.</p>
+  <p>The hyphen assertions were added inside <code>test_sanitize_fts_query</code> and <code>test_query_with_quotes_and_colon_returns_200</code>. The collected count stayed 85.</p>
+
+  <h2 id="e2e">E2E</h2>
+  <p><code>e2e.log</code> ends with <code>e2e_ok</code>. The client posted multipart forms to the Next server and followed the redirects. It did not call port 65524.</p>
+  <pre>login_document product=CompPulse health={"status":"ok"}
+login_status=303 cookie=comppulse_session
+directory_status=200 country=IN status=active scaled_digit_strings=True
+profile_url=/employees/1ac586b2-3e42-24ca-6e63-158e1c0f4ef4
+pay_change_status=303 version_sent=3
+audit_e2e_raise_count=6
+stale_message=Record was modified. Reload and try again.
+audit_after_stale raise=6 stale=0
+dashboard_status=200 sections=headcount,total,average,p25,p50,p75,histogram
+empty_directory=No employees match these filters.
+directory_error=Could not load employees.
+fx_notice=present currencies=USD,EUR,INR,JPY
+csv_export=200 rows=2829
+e2e_ok</pre>
+  <p><code>audit_e2e_raise_count</code> and <code>raise=6</code> are counts of the text <code>E2E raise</code> in the profile HTML. <code>stale=0</code> is the count of the text <code>E2E stale</code> on a fresh profile GET after the rejected write. The script exits if that stale text is present.</p>
+  <p>The saved dashboard document from that same run renders the overview payload: Headcount 9576, Total <code>$$1,214,039,285.14</code>, Average <code>$$126,779.37</code>, P25 <code>$$83,148.20</code>, P50 <code>$$114,137.58</code>, P75 <code>$$163,991.02</code>, and a histogram label <code>0–50k</code> (en dash). Those figures are the live 10,000-row database after the pay edits in this session, not a series written into the page source.</p>
+  <p>The filtered CSV returned 2,829 data rows through the Next export route for the India active filter.</p>
+
+  <h2 id="ui">UI/UX</h2>
+  <p>No desktop browser was available. <code>ui.log</code> records <code>browser=not-used</code> and ends with <code>ui_ok</code>. The check used the server-rendered HTML from the same Next origin as the end-to-end run.</p>
+  <pre>browser=not-used
+method=server-rendered HTML through http://127.0.0.1:65525
+login=CompPulse and live {"status":"ok"}
+empty=No employees match these filters.
+error=Could not load employees.
+conflict=Record was modified. Reload and try again. Reload link present. No second audit row.
+fx-notice=present and currencies came back as USD EUR INR JPY
+dashboard=headcount total average quartiles histogram from the overview payload
+hardcoded-series=none observed; empty search changed the directory result
+ui_ok</pre>
+  <p>The empty search was <code>q=zzzz-no-such-person-e2e</code>. After the hyphen split, that query returns HTTP 200 and the empty-state sentence. A bad cursor still renders <code>Could not load employees.</code> The FX page lists USD, EUR, INR, and JPY from the reference payload, and it includes the sentence that saving recomputes USD pay while audit history keeps the original rate. The add-employee hint <code>for example 120000.50</code> is format copy. It is not a person or a total.</p>
+
+  <h2 id="load">Stress/load</h2>
+  <p><code>load.log</code> is a separate process and a separate database (<code>load.db</code>). It ends with <code>load_ok</code> and <code>EXIT:0</code>. This file was captured before the hyphen split. The measured search term was <code>kabir</code>, so that change does not alter these statements. The 100,000-row run was not repeated after the split.</p>
+  <pre>seed count=100000 seconds=26.2032 complexity=O(n)
+filtered_page seconds=0.0575 offset_param=0 row_skip=no complexity=O(limit)-after-index-seek statements=2
+filtered_page total=28641 items=50
+deep_keyset_page seconds=0.0405 offset_param=0 row_skip=no complexity=O(limit)-after-index-seek-not-O(1) statements=3
+deep_page_reached pages=40 items=50 has_next=True
+search_page seconds=0.0235 offset_param=0 row_skip=no complexity=FTS-prefix-not-O(1) statements=2
+search_total=3116
+id_lookup seconds=0.0070 offset_param=absent row_skip=no complexity=O(1)-primary-key statements=1
+analytics seconds=0.8720 offset_param=absent row_skip=no complexity=O(n)-active-rows-not-O(1) statements=4
+analytics_headcount=95998 histogram=7
+pay_update seconds=0.0196 offset_param=absent row_skip=no complexity=O(1)-point-update-plus-audit-insert statements=4
+pay_version=2
+stale_version seconds=0.0087 offset_param=absent row_skip=no complexity=O(1)-rejected-write statements=3
+stale_status=409 audit_rows=1
+fx_recompute seconds=0.8139 offset_param=absent row_skip=no complexity=O(employees-on-currency)-not-O(1) statements=4
+load_ok
+EXIT:0</pre>
+  <p>Thirty-nine <code>keyset_step</code> lines sit between the first filtered page and <code>deep_page_reached</code>. Each records <code>offset_param=0 row_skip=no</code>. Page 40 still had a next cursor. India is weight 30 of 100, so 28,641 active India rows is enough for 40 pages of 50.</p>
+
+  <h2 id="profile">Profile</h2>
+  <p>The whole program is not O(1). The labels below are the ones printed by the 100,000-row run.</p>
+  <table>
+    <thead>
+      <tr><th>Path</th><th class="num">Seconds</th><th>Rows touched</th><th>Cost</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Seed</td><td class="num">26.2032</td><td>100,000 inserted</td><td>O(n). Batches of 1,000, then one FTS rebuild.</td></tr>
+      <tr><td>Filtered directory page</td><td class="num">0.0575</td><td>28,641 matched, 50 returned</td><td>O(limit) after an index seek.</td></tr>
+      <tr><td>Deep keyset page (page 40)</td><td class="num">0.0405</td><td>50 returned, next cursor present</td><td>O(limit) after a seek on the sort key and <code>id</code>. Not O(1).</td></tr>
+      <tr><td>Search <code>kabir</code></td><td class="num">0.0235</td><td>3,116 matches</td><td>FTS5 prefix query. Not O(1).</td></tr>
+      <tr><td>Employee by id</td><td class="num">0.0070</td><td>1</td><td>O(1) primary-key lookup.</td></tr>
+      <tr><td>Analytics overview</td><td class="num">0.8720</td><td>95,998 active, 7 histogram buckets</td><td>O(n) over active salaries. Not O(1).</td></tr>
+      <tr><td>Pay update</td><td class="num">0.0196</td><td>version became 2</td><td>O(1) point update plus one audit insert.</td></tr>
+      <tr><td>Stale version</td><td class="num">0.0087</td><td>HTTP 409, prior audit row kept</td><td>O(1) rejected write.</td></tr>
+      <tr><td>Planning-rate recompute</td><td class="num">0.8139</td><td>employees on that currency</td><td>O(employees on that currency). Not O(1).</td></tr>
+    </tbody>
+  </table>
+  <p>Page fetches seek with the salary expression index <code>(CAST(salary_usd_scaled AS INTEGER), id)</code> and the id tie-break, then stop at the page size. They do not walk skipped rows. FTS prefix search, inclusive quartiles, the active-salary scan, seeding, and an FX recompute all grow with the rows they read. Those algorithms were left as specified.</p>
+  <p><code>OFFSET 0</code> in the rendered SQL is the SQLite dialect default when the query has a limit and no offset clause. <code>row_skip=no</code> in the log means the bound value was 0. A non-zero offset fails the script.</p>
+
+  <h2 id="leftovers">Leftovers</h2>
+  <ul>
+    <li>The demo video is not recorded. The spoken script is in the README. Recording it is outside this run.</li>
+    <li>nginx-proxy-manager is not on this machine. The reachable app is <code>127.0.0.1:65525</code>. When the host service is present, it forwards to that port with scheme <code>http</code> and websockets on, and it does not forward to 65524.</li>
+    <li>GitHub Actions cannot be used as a check until the account billing limit is cleared. The local results are ruff, 85 pytest passes, the Compose launch, the end-to-end script, and the 100,000-row script.</li>
+    <li><code>load.log</code> predates the hyphen split. The logical suite that includes the hyphen assertions is the later file: <code>RUFF_EXIT:0</code>, <code>85 passed in 7.32s</code>.</li>
+    <li>UI states were confirmed in server-rendered HTML. A desktop browser did not click the pages.</li>
+    <li>Unauthenticated <code>GET /</code> is rewritten to the login document so the 200 body contains <code>CompPulse</code> and <code>{"status":"ok"}</code>. Deep links still redirect to <code>/login</code>.</li>
+    <li>A stale pay form redirects to <code>?conflict=1</code>. The action does not PATCH again. The visible sentence is <code>Record was modified. Reload and try again.</code></li>
+    <li>Search treats <code>-</code> as a word break before the existing FTS strip, so <code>Mary-Jane</code> is <code>Mary* AND Jane*</code> and a hyphenated query cannot be read as an FTS column filter.</li>
+    <li>Next product work waits on a decision after this report.</li>
+  </ul>
+</main>
+</body>
+</html>

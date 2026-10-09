@@ -12,7 +12,6 @@ export type PayFormState = {
 };
 
 const AMOUNT_ERROR = "Check the amounts and try again.";
-const CONFLICT_MESSAGE = "Record was modified. Reload and try again.";
 
 type PayInput = {
   baseSalaryScaled: string;
@@ -63,8 +62,8 @@ export async function updatePayAction(
     redirect("/logout");
   }
   if (response.status === 409) {
-    // Stale version_id. Return once and do not PATCH again.
-    return { message: CONFLICT_MESSAGE, conflict: true };
+    // Stale version_id. Redirect once and do not PATCH again.
+    redirect(`${profilePath(employeeId)}?conflict=1`);
   }
   if (response.status === 422) {
     return { message: AMOUNT_ERROR, conflict: false };
@@ -76,7 +75,11 @@ export async function updatePayAction(
     return { message: `Could not save pay. ${response.status}`, conflict: false };
   }
 
-  redirect(`/employees/${encodeURIComponent(employeeId)}`);
+  redirect(profilePath(employeeId));
+}
+
+function profilePath(employeeId: string): string {
+  return `/employees/${encodeURIComponent(employeeId)}`;
 }
 
 function readPayInput(formData: FormData, salaryScale: number): PayInput | null {

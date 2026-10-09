@@ -217,6 +217,7 @@ def test_sanitize_fts_query() -> None:
     assert sanitize_fts_query("(hello)") == "hello*"
     assert sanitize_fts_query("x^y") == "xy*"
     assert sanitize_fts_query('"foo:bar"') == "foobar*"
+    assert sanitize_fts_query("Mary-Jane") == "Mary* AND Jane*"
 
 
 def test_page_size_and_keyset(api: tuple[TestClient, Settings, Path]) -> None:
@@ -595,6 +596,9 @@ def test_query_with_quotes_and_colon_returns_200(
     skipped = client.get("/employees", params={"q": '":"'}, headers=headers)
     assert skipped.status_code == 200, skipped.text
     assert skipped.json()["total"] == 2
+    hyphen = client.get("/employees", params={"q": "zzzz-no-such-person"}, headers=headers)
+    assert hyphen.status_code == 200, hyphen.text
+    assert hyphen.json()["total"] == 0
 
 
 def test_csv_major_units(api: tuple[TestClient, Settings, Path]) -> None:

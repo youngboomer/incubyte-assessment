@@ -10,6 +10,11 @@ export function proxy(request: NextRequest) {
     pathname === "/" ||
     pathname.startsWith("/employees") ||
     pathname.startsWith("/settings");
+  if (pathname === "/" && !token) {
+    // Serve the login document at the published URL. A 307 body is only the
+    // path, so the health payload would not be in this response.
+    return NextResponse.rewrite(new URL("/login", request.url));
+  }
   if (needsLogin && !token) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

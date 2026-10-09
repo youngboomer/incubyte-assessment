@@ -22,9 +22,19 @@ export default async function LoginPage() {
     }
   }
 
+  let healthPayload = "unavailable";
+  try {
+    const health = await backendFetch("/health");
+    healthPayload = await health.text();
+  } catch (error) {
+    healthPayload = error instanceof Error ? error.message : "unavailable";
+  }
+
   return (
     <main>
       <h1>CompPulse</h1>
+      <p>Backend health</p>
+      <pre dangerouslySetInnerHTML={{ __html: healthPayload.replace(/</g, "") }} />
       <LoginForm />
     </main>
   );
