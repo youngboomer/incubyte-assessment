@@ -332,6 +332,48 @@ def test_startup_does_not_reseed_existing_employees(tmp_path: Path) -> None:
         connection.close()
 
 
+def test_seed_without_reset_keeps_a_changed_planning_rate(tmp_path: Path) -> None:
+    db_path = tmp_path / "rate.db"
+    url = _sqlite_url(db_path)
+
+    async def _run() -> None:
+        engine = create_db_engine(url)
+        try:
+            await init_schema(engine)
+            await apply_seed(engine, 3, reset=False)
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql(
+                    "UPDATE currencies SET units_per_usd_scaled = '1111111' WHERE code = 'GBP'"
+                )
+            inserted = await apply_seed(engine, 3, reset=False)
+            assert inserted == 0
+            kept = await engine.connect()
+            try:
+                rate = (
+                    await kept.exec_driver_sql(
+                        "SELECT units_per_usd_scaled FROM currencies WHERE code = 'GBP'"
+                    )
+                ).scalar_one()
+            finally:
+                await kept.close()
+            assert rate == "1111111"
+            await apply_seed(engine, 3, reset=True)
+            restored = await engine.connect()
+            try:
+                rate = (
+                    await restored.exec_driver_sql(
+                        "SELECT units_per_usd_scaled FROM currencies WHERE code = 'GBP'"
+                    )
+                ).scalar_one()
+            finally:
+                await restored.close()
+            assert rate == "780000"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
 def test_seed_ten_thousand_golden_row_and_invariants(tmp_path: Path) -> None:
     url = _sqlite_url(tmp_path / "tenk.db")
 

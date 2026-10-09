@@ -373,12 +373,12 @@ async def apply_seed(engine: AsyncEngine, count: int, *, reset: bool) -> int:
             existing = int(counted.scalar_one())
         if existing:
             async with engine.begin() as conn:
-                await _upsert_reference(conn)
+                await _upsert_reference(conn, restore_rates=False)
             return 0
 
     rows = generate_employees(count) if count else []
     async with engine.begin() as conn:
-        await _upsert_reference(conn)
+        await _upsert_reference(conn, restore_rates=reset)
         if reset:
             await _clear_people(conn)
 
@@ -406,17 +406,22 @@ async def seed_if_empty(engine: AsyncEngine, count: int) -> None:
         await apply_seed(engine, count, reset=False)
 
 
-async def _upsert_reference(conn: AsyncConnection) -> None:
+async def _upsert_reference(conn: AsyncConnection, *, restore_rates: bool) -> None:
+    rate_update = (
+        """,
+              units_per_usd_scaled = excluded.units_per_usd_scaled,
+              updated_at = excluded.updated_at"""
+        if restore_rates
+        else ""
+    )
     for currency in CURRENCIES:
         await conn.exec_driver_sql(
-            """
+            f"""
             INSERT INTO currencies (code, name, minor_scale, units_per_usd_scaled, updated_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(code) DO UPDATE SET
               name = excluded.name,
-              minor_scale = excluded.minor_scale,
-              units_per_usd_scaled = excluded.units_per_usd_scaled,
-              updated_at = excluded.updated_at
+              minor_scale = excluded.minor_scale{rate_update}
             """,
             (
                 currency.code,
