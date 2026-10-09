@@ -1,0 +1,1 @@
+"""CompPulse FastAPI application."""
