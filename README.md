@@ -20,11 +20,8 @@ Salary management for ACME’s HR manager. The directory is seeded with 10,000 e
 The password is a demo default from `.env.example`. Change `APP_SECRET` and `HR_PASSWORD` before a public host.
 
 ## Run
-Application images land in the foundation PR. Until then, this repository is the spec.
-
-When Compose is in place:
-
 - `docker compose up --build` publishes the frontend on `127.0.0.1:65525`. The backend listens on 65524 inside the Docker network and has no host port.
+- The frontend is on `edge` and `internal`. The backend is only on `internal`. Docker does not publish a port from an internal-only container.
 - Compose does not start nginx-proxy-manager.
 
 Proxy host, in the nginx-proxy-manager service that is already running:

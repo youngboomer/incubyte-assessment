@@ -10,6 +10,7 @@ services:
     ports:
       - "127.0.0.1:65525:65525"
     networks:
+      - edge
       - internal
     depends_on:
       - backend
@@ -31,6 +32,9 @@ services:
       - internal
 
 networks:
+  # Docker does not publish a port for a container that is only on an
+  # internal network. edge is the host-facing bridge for 127.0.0.1:65525.
+  edge:
   internal:
     internal: true
 
