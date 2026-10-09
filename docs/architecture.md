@@ -43,12 +43,13 @@ Internet
   └─ nginx-proxy-manager          host service, not a container
         └─ 127.0.0.1:65525
              └─ frontend          Next.js listens on 65525
+                  ├─ network: edge
                   └─ network: internal
                        └─ backend FastAPI listens on 65524, no host port
                             └─ volume: /data/comppulse.db
 ```
 
-`internal` is a Compose network with `internal: true`. The backend is attached only to that network, so the host has no mapping for port 65524. The frontend is on that network and calls `BACKEND_URL=http://backend:65524` from the server. `BACKEND_URL` is not a `NEXT_PUBLIC_` variable. Compose publishes the frontend as `127.0.0.1:65525:65525`, so the existing host proxy can reach it and the port is not open on the public interface.
+`internal` is a Compose network with `internal: true`. The backend is attached only to that network, so the host has no mapping for port 65524. The frontend is on `internal` and on `edge`. `edge` is a normal bridge. Docker does not publish a port for a container that sits only on an internal network, so `127.0.0.1:65525:65525` is published through `edge`. The frontend calls `BACKEND_URL=http://backend:65524` from the server. `BACKEND_URL` is not a `NEXT_PUBLIC_` variable. The port is not open on the public interface.
 
 Login: FastAPI checks `HR_EMAIL` and `HR_PASSWORD` and returns a bearer token signed with `itsdangerous.TimestampSigner` and `APP_SECRET`, max age `TOKEN_MAX_AGE_SECONDS`. The Next.js login action stores it in the httpOnly cookie `comppulse_session`. Later server calls send `Authorization: Bearer`. Logout deletes the cookie. `POST /auth/login` and `GET /health` are the only unauthenticated routes.
 
