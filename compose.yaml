@@ -1,0 +1,38 @@
+services:
+  frontend:
+    build: ./web
+    container_name: comppulse-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:65524
+      PORT: "65525"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "127.0.0.1:65525:65525"
+    networks:
+      - internal
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    container_name: comppulse-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/comppulse.db
+      APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
+      HR_EMAIL: ${HR_EMAIL:-hr@acme.test}
+      HR_PASSWORD: ${HR_PASSWORD:-compulse-demo}
+      TOKEN_MAX_AGE_SECONDS: ${TOKEN_MAX_AGE_SECONDS:-43200}
+      SEED_COUNT: ${SEED_COUNT:-10000}
+    volumes:
+      - db_data:/data
+    networks:
+      - internal
+
+networks:
+  internal:
+    internal: true
+
+volumes:
+  db_data:

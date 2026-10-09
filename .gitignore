@@ -4,6 +4,7 @@ __pycache__/
 .ruff_cache/
 *.pyc
 .mypy_cache/
+*.egg-info/
 
 node_modules/
 web/.next/
