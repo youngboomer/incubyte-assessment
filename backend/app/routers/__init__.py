@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Router registry. Add routes on these objects; the app includes this list once."""
 
 from app.routers.analytics import router as analytics_router
@@ -22,3 +23,5 @@ __all__ = [
     "health_router",
     "routers",
 ]
+
+import app.routers.pay  # noqa: F401
