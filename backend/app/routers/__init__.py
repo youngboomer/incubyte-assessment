@@ -5,11 +5,13 @@ from app.routers.auth import router as auth_router
 from app.routers.employees import router as employees_router
 from app.routers.fx import router as fx_router
 from app.routers.health import router as health_router
+from app.routers.reference import router as reference_router
 
 routers = [
     health_router,
     auth_router,
     employees_router,
+    reference_router,
     analytics_router,
     fx_router,
 ]
@@ -20,5 +22,6 @@ __all__ = [
     "employees_router",
     "fx_router",
     "health_router",
+    "reference_router",
     "routers",
 ]

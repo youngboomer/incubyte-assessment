@@ -19,7 +19,7 @@ def test_health(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         assert "access-control-allow-origin" not in {key.lower() for key in response.headers}
-        assert client.get("/employees").status_code == 404
+        assert client.get("/employees").status_code == 401
         assert client.get("/analytics/overview").status_code == 401
         assert client.get("/fx").status_code == 404
         login = client.post("/auth/login", json={"email": "hr@acme.test", "password": "x"})
