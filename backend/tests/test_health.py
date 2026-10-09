@@ -13,14 +13,14 @@ def _sqlite_url(path: Path) -> str:
 
 def test_health(tmp_path: Path) -> None:
     db_path = tmp_path / "comppulse.db"
-    app = create_app(Settings(database_url=_sqlite_url(db_path)))
+    app = create_app(Settings(database_url=_sqlite_url(db_path), seed_count=0))
     with TestClient(app) as client:
         response = client.get("/health", headers={"Origin": "https://example.test"})
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         assert "access-control-allow-origin" not in {key.lower() for key in response.headers}
         assert client.get("/employees").status_code == 404
-        assert client.get("/analytics/overview").status_code == 404
+        assert client.get("/analytics/overview").status_code == 401
         assert client.get("/fx").status_code == 404
         login = client.post("/auth/login", json={"email": "hr@acme.test", "password": "x"})
         assert login.status_code == 404
