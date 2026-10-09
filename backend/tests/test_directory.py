@@ -1,10 +1,13 @@
 import csv
 import io
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from app.deps import issue_token
 from app.main import create_app
@@ -482,6 +485,182 @@ def test_salary_numeric_order(api: tuple[TestClient, Settings, Path]) -> None:
     assert base_rows_order[0] == "d"
     assert base_rows_order[-1] == "a"
     assert _ids(client, headers, sort="salary_usd", direction="desc", limit=1) == ["c"]
+
+
+def _capture_sql(engine: Engine, call: Callable[[], None]) -> list[tuple[str, object]]:
+    captured: list[tuple[str, object]] = []
+
+    def hook(_conn, _cursor, statement, parameters, _context, _executemany) -> None:
+        captured.append((statement, parameters))
+
+    event.listen(engine, "before_cursor_execute", hook)
+    try:
+        call()
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+    return captured
+
+
+def _page_statement(captured: list[tuple[str, object]], column: str) -> tuple[str, object]:
+    matches = [
+        (statement, parameters)
+        for statement, parameters in captured
+        if statement.lstrip().upper().startswith("SELECT")
+        and "ORDER BY" in statement.upper()
+        and column in statement
+    ]
+    assert len(matches) == 1, [statement for statement, _parameters in captured]
+    return matches[0]
+
+
+def _explain(db_path: Path, statement: str, parameters: object) -> tuple[list[str], list[str]]:
+    if isinstance(parameters, dict):
+        bound: object = parameters
+    elif isinstance(parameters, (list, tuple)):
+        bound = tuple(parameters)
+    else:
+        bound = ()
+    connection = sqlite3.connect(db_path)
+    try:
+        plan = [
+            str(row[3])
+            for row in connection.execute("EXPLAIN QUERY PLAN " + statement, bound)
+        ]
+        opcodes = [str(row[1]) for row in connection.execute("EXPLAIN " + statement, bound)]
+    finally:
+        connection.close()
+    return plan, opcodes
+
+
+def _assert_salary_seek(
+    db_path: Path,
+    statement: str,
+    parameters: object,
+    index_name: str,
+    opcode: str,
+) -> None:
+    plan, opcodes = _explain(db_path, statement, parameters)
+    detail = "\n".join(plan)
+    assert f"SEARCH employees USING INDEX {index_name} (<expr>" in detail, detail
+    assert "USE TEMP B-TREE FOR ORDER BY" not in detail, detail
+    assert opcode in opcodes, opcodes
+    assert "Rewind" not in opcodes, opcodes
+
+
+def test_salary_keyset_seeks_expression_index(
+    api: tuple[TestClient, Settings, Path],
+) -> None:
+    client, settings, db_path = api
+    headers = _auth(settings)
+    rows = [
+        _employee(
+            id=f"emp-{index:03d}",
+            employee_number=f"EMP-{index:05d}",
+            email=f"seek.{index}@acme.test",
+            first_name="Ada",
+            last_name=f"{index:03d}",
+            salary_usd_scaled=str(1000 + index // 2),
+            base_salary_scaled=str(5000 + index),
+        )
+        for index in range(40)
+    ]
+    _seed(db_path, rows)
+    expected_usd = [
+        row["id"]
+        for row in sorted(
+            rows, key=lambda row: (int(str(row["salary_usd_scaled"])), str(row["id"]))
+        )
+    ]
+    expected_base = [
+        row["id"]
+        for row in sorted(
+            rows, key=lambda row: (int(str(row["base_salary_scaled"])), str(row["id"]))
+        )
+    ]
+    engine = client.app.state.engine.sync_engine
+
+    def walk(sort: str, direction: str) -> list[str]:
+        seen: list[str] = []
+        cursor = None
+        for _ in range(20):
+            params: dict[str, object] = {"sort": sort, "direction": direction, "limit": 7}
+            if cursor is not None:
+                params["cursor"] = cursor
+            response = client.get("/employees", params=params, headers=headers)
+            assert response.status_code == 200, response.text
+            body = response.json()
+            seen.extend(item["id"] for item in body["items"])
+            cursor = body["next_cursor"]
+            if cursor is None:
+                break
+        return seen
+
+    assert walk("salary_usd", "asc") == expected_usd
+    assert walk("salary_usd", "desc") == list(reversed(expected_usd))
+    assert walk("base_salary", "asc") == expected_base
+
+    first = client.get(
+        "/employees",
+        params={"sort": "salary_usd", "direction": "asc", "limit": 7},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    cursor = first.json()["next_cursor"]
+    assert isinstance(cursor, str)
+
+    def second_page() -> None:
+        response = client.get(
+            "/employees",
+            params={"sort": "salary_usd", "direction": "asc", "limit": 7, "cursor": cursor},
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        assert [item["id"] for item in response.json()["items"]] == expected_usd[7:14]
+
+    statement, parameters = _page_statement(_capture_sql(engine, second_page), "salary_usd_scaled")
+    _assert_salary_seek(db_path, statement, parameters, "idx_emp_salary_usd", "SeekGE")
+
+    desc = client.get(
+        "/employees",
+        params={"sort": "salary_usd", "direction": "desc", "limit": 7},
+        headers=headers,
+    )
+    desc_cursor = desc.json()["next_cursor"]
+
+    def desc_page() -> None:
+        response = client.get(
+            "/employees",
+            params={
+                "sort": "salary_usd",
+                "direction": "desc",
+                "limit": 7,
+                "cursor": desc_cursor,
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+
+    statement, parameters = _page_statement(_capture_sql(engine, desc_page), "salary_usd_scaled")
+    _assert_salary_seek(db_path, statement, parameters, "idx_emp_salary_usd", "SeekLE")
+
+    base = client.get(
+        "/employees",
+        params={"sort": "base_salary", "direction": "asc", "limit": 7},
+        headers=headers,
+    )
+    base_cursor = base.json()["next_cursor"]
+
+    def base_page() -> None:
+        response = client.get(
+            "/employees",
+            params={"sort": "base_salary", "direction": "asc", "limit": 7, "cursor": base_cursor},
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        assert [item["id"] for item in response.json()["items"]] == expected_base[7:14]
+
+    statement, parameters = _page_statement(_capture_sql(engine, base_page), "base_salary_scaled")
+    _assert_salary_seek(db_path, statement, parameters, "idx_emp_base_salary", "SeekGE")
 
 
 def test_sort_uses_allow_listed_columns(api: tuple[TestClient, Settings, Path]) -> None:

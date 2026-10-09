@@ -48,6 +48,11 @@ class Employee(Base):
             literal_column("CAST(salary_usd_scaled AS INTEGER)"),
             "id",
         ),
+        Index(
+            "idx_emp_base_salary",
+            literal_column("CAST(base_salary_scaled AS INTEGER)"),
+            "id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)

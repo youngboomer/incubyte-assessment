@@ -7,11 +7,13 @@ from typing import Any
 from itsdangerous import BadData, URLSafeSerializer
 from sqlalchemy import (
     Integer,
+    and_,
     bindparam,
     cast,
     column,
     func,
     literal_column,
+    or_,
     select,
     table,
     text,
@@ -201,6 +203,28 @@ def _wants_greater(direction: str, side: str) -> bool:
     return side == "prev"
 
 
+def _salary_seek_predicate(
+    columns: Sequence[ColumnElement[Any]],
+    values: Sequence[str],
+    row_id: str,
+    direction: str,
+    side: str,
+) -> ColumnElement[bool]:
+    """Expand a salary comparison so SQLite can seek the expression index.
+
+    ``(CAST(salary AS INTEGER), id) > (?, ?)`` is planned as a rewind of
+    ``idx_emp_salary_usd``. The same comparison written as
+    ``salary >= ? AND (salary > ? OR id > ?)`` is a SeekGE on that index.
+    """
+    salary = columns[0]
+    identity = columns[1]
+    bound = cast(bindparam("cv0", values[0]), Integer)
+    row = bindparam("cid", row_id)
+    if _wants_greater(direction, side):
+        return and_(salary >= bound, or_(salary > bound, identity > row))
+    return and_(salary <= bound, or_(salary < bound, identity < row))
+
+
 def _seek_predicate(
     columns: Sequence[ColumnElement[Any]],
     sort: str,
@@ -209,13 +233,11 @@ def _seek_predicate(
     direction: str,
     side: str,
 ) -> ColumnElement[bool]:
-    right: list[ColumnElement[Any]] = []
-    for index, value in enumerate(values):
-        bound = bindparam(f"cv{index}", value)
-        if sort in _SALARY_SORTS:
-            right.append(cast(bound, Integer))
-        else:
-            right.append(bound)
+    if sort in _SALARY_SORTS:
+        return _salary_seek_predicate(columns, values, row_id, direction, side)
+    right: list[ColumnElement[Any]] = [
+        bindparam(f"cv{index}", value) for index, value in enumerate(values)
+    ]
     right.append(bindparam("cid", row_id))
     left = tuple_(*columns)
     other = tuple_(*right)

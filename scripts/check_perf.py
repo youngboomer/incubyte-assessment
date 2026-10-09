@@ -3,14 +3,16 @@
 The script seeds with ``app.seed.apply_seed``, then drives the FastAPI
 routes through ``TestClient``. SQLAlchemy's SQLite dialect renders
 ``OFFSET 0`` beside every LIMIT. A zero offset does not skip rows, so the
-script fails only when the offset parameter is non-zero. It does not claim
-these paths are O(1).
+script fails only when the offset parameter is non-zero. Complexity labels
+for directory pages come from ``EXPLAIN QUERY PLAN`` of the statements that
+request ran. The script does not claim these paths are O(1).
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import sqlite3
 import time
 from pathlib import Path
 
@@ -98,7 +100,74 @@ def main() -> None:
 
     event.listen(app.state.engine.sync_engine, "before_cursor_execute", _capture)
 
-    def timed(name: str, complexity: str, call):
+    def _bound(parameters: object) -> object:
+        if isinstance(parameters, dict):
+            return parameters
+        if isinstance(parameters, (tuple, list)):
+            if parameters and all(isinstance(item, (tuple, list, dict)) for item in parameters):
+                return parameters[0]
+            return parameters
+        return ()
+
+    def _plans(rows: list[tuple[str, object]]) -> list[str]:
+        described: list[str] = []
+        connection = sqlite3.connect(args.database)
+        try:
+            for statement, parameters in rows:
+                kind = statement.lstrip().upper()
+                if not kind.startswith(("SELECT", "UPDATE", "INSERT", "DELETE")):
+                    continue
+                bound = _bound(parameters)
+                plan_rows = connection.execute("EXPLAIN QUERY PLAN " + statement, bound).fetchall()
+                plan = " ; ".join(str(row[-1]) for row in plan_rows)
+                opcodes = [
+                    str(row[1]) for row in connection.execute("EXPLAIN " + statement, bound)
+                ]
+                counts = ",".join(
+                    f"{name}:{opcodes.count(name)}"
+                    for name in ("Rewind", "SeekGE", "SeekLE", "SeekGT", "SeekLT")
+                )
+                described.append(f"{plan} opcodes={counts}")
+        finally:
+            connection.close()
+        return described
+
+    def _complexity(name: str, plans: list[str]) -> str:
+        joined = " | ".join(plans)
+        if name in {
+            "filtered_page",
+            "keyset_step",
+            "deep_keyset_page",
+            "salary_first_page",
+            "salary_seek_step",
+            "salary_seek_page",
+        }:
+            if "idx_emp_status_country" in joined and "USE TEMP B-TREE FOR ORDER BY" in joined:
+                return "filter-index-scan-plus-sort-not-salary-seek-not-O(1)"
+            if "SEARCH employees USING INDEX idx_emp_salary_usd (<expr>" in joined:
+                return "O(limit)-after-salary-index-seek-not-O(1)"
+            if "SEARCH employees USING INDEX idx_emp_base_salary (<expr>" in joined:
+                return "O(limit)-after-base-salary-index-seek-not-O(1)"
+            if "SCAN employees USING INDEX idx_emp_salary_usd" in joined:
+                return "O(limit)-ordered-salary-index-scan-not-O(1)"
+            return "unlabeled"
+        if name == "search_page":
+            if "employees_fts" in joined:
+                return "FTS-prefix-not-O(1)"
+            return "unlabeled"
+        if name == "id_lookup":
+            return "O(1)-primary-key"
+        if name == "analytics":
+            return "O(n)-active-rows-not-O(1)"
+        if name == "pay_update":
+            return "O(1)-point-update-plus-audit-insert"
+        if name == "stale_version":
+            return "O(1)-rejected-write"
+        if name == "fx_recompute":
+            return "O(employees-on-currency)-not-O(1)"
+        return "unlabeled"
+
+    def timed(name: str, call):
         captured.clear()
         started = time.perf_counter()
         result = call()
@@ -112,10 +181,14 @@ def main() -> None:
         offset = (
             "offset_param=0 row_skip=no" if saw_zero_offset else "offset_param=absent row_skip=no"
         )
+        plans = _plans(captured)
+        complexity = _complexity(name, plans)
         print(
             f"{name} seconds={elapsed:.4f} {offset} complexity={complexity} "
             f"statements={len(captured)}"
         )
+        for index, plan in enumerate(plans):
+            print(f"{name} plan[{index}]={plan}")
         return result
 
     with TestClient(app) as client:
@@ -138,7 +211,6 @@ def main() -> None:
 
         first = timed(
             "filtered_page",
-            "O(limit)-after-index-seek",
             lambda: page("country=IN&status=active&sort=salary_usd&direction=asc&limit=50"),
         )
         print(f"filtered_page total={first['total']} items={len(first['items'])}")
@@ -153,20 +225,33 @@ def main() -> None:
                 f"&cursor={cursor}"
             )
             name = "deep_keyset_page" if index == args.deep_pages - 1 else "keyset_step"
-            last = timed(
-                name,
-                "O(limit)-after-index-seek-not-O(1)",
-                lambda query=query: page(query),
-            )
+            last = timed(name, lambda query=query: page(query))
             cursor = last["next_cursor"]
         print(
             f"deep_page_reached pages={args.deep_pages} items={len(last['items'])} "
             f"has_next={last['next_cursor'] is not None}"
         )
 
+        salary_first = timed(
+            "salary_first_page",
+            lambda: page("sort=salary_usd&direction=asc&limit=50"),
+        )
+        salary_cursor = salary_first["next_cursor"]
+        salary_last = salary_first
+        for index in range(args.deep_pages):
+            if not salary_cursor:
+                raise SystemExit(f"ran out of salary cursors at page {index}")
+            query = f"sort=salary_usd&direction=asc&limit=50&cursor={salary_cursor}"
+            name = "salary_seek_page" if index == args.deep_pages - 1 else "salary_seek_step"
+            salary_last = timed(name, lambda query=query: page(query))
+            salary_cursor = salary_last["next_cursor"]
+        print(
+            f"salary_seek_reached pages={args.deep_pages} items={len(salary_last['items'])} "
+            f"has_next={salary_last['next_cursor'] is not None}"
+        )
+
         found = timed(
             "search_page",
-            "FTS-prefix-not-O(1)",
             lambda: page("q=kabir&limit=20"),
         )
         print(f"search_total={found['total']}")
@@ -177,7 +262,7 @@ def main() -> None:
             assert response.status_code == 200, response.text
             return response.json()
 
-        employee = timed("id_lookup", "O(1)-primary-key", one)
+        employee = timed("id_lookup", one)
 
         def overview():
             response = client.get("/analytics/overview", headers=headers)
@@ -196,7 +281,7 @@ def main() -> None:
                     raise SystemExit(f"{key} is not a digit string: {body[key]!r}")
             return body
 
-        stats = timed("analytics", "O(n)-active-rows-not-O(1)", overview)
+        stats = timed("analytics", overview)
         print(f"analytics_headcount={stats['headcount']} histogram={len(stats['histogram'])}")
 
         def pay():
@@ -214,7 +299,7 @@ def main() -> None:
             assert response.status_code == 200, response.text
             return response.json()
 
-        updated = timed("pay_update", "O(1)-point-update-plus-audit-insert", pay)
+        updated = timed("pay_update", pay)
         print(f"pay_version={updated['version_id']}")
 
         def stale():
@@ -231,7 +316,7 @@ def main() -> None:
             )
             return response
 
-        conflict = timed("stale_version", "O(1)-rejected-write", stale)
+        conflict = timed("stale_version", stale)
         assert conflict.status_code == 409, conflict.text
         assert conflict.json()["detail"] == "Record was modified. Reload and try again."
         audit = client.get(f"/employees/{employee_id}/audit", headers=headers)
@@ -250,7 +335,7 @@ def main() -> None:
             assert response.status_code == 200, response.text
             return response.json()
 
-        timed("fx_recompute", "O(employees-on-currency)-not-O(1)", fx)
+        timed("fx_recompute", fx)
 
     print("load_ok")
 

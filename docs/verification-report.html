@@ -66,12 +66,12 @@
       <tr>
         <td>Search is FTS5 (<code>unicode61 remove_diacritics 2</code>), not Porter and not a search <code>LIKE</code>.</td>
         <td class="pass">Pass</td>
-        <td><code>tests/test_directory.py::test_sanitize_fts_query</code> PASSED. <code>tests/test_directory.py::test_query_with_quotes_and_colon_returns_200</code> PASSED. <code>load.log</code>: <code>search_page seconds=0.0235 offset_param=0 row_skip=no complexity=FTS-prefix-not-O(1)</code> and <code>search_total=3116</code>. Employee-number allocation still uses <code>LIKE 'EMP-%'</code>. That statement is not the directory search.</td>
+        <td><code>tests/test_directory.py::test_sanitize_fts_query</code> PASSED. <code>tests/test_directory.py::test_query_with_quotes_and_colon_returns_200</code> PASSED. <code>load.log</code>: <code>search_page seconds=0.0238 offset_param=0 row_skip=no complexity=FTS-prefix-not-O(1)</code> and <code>search_total=3116</code>. The plan is <code>SCAN employees_fts VIRTUAL TABLE INDEX 0:M5</code>. Employee-number allocation still uses <code>LIKE 'EMP-%'</code>. That statement is not the directory search.</td>
       </tr>
       <tr>
-        <td>Directory pages are keyset seeks. The application does not skip rows with OFFSET.</td>
+        <td>Directory pages are keyset cursors. The application does not skip rows with a non-zero OFFSET. An unfiltered salary page seeks <code>idx_emp_salary_usd</code>. The India/active salary page does not.</td>
         <td class="pass">Pass</td>
-        <td><code>tests/test_directory.py::test_page_size_and_keyset</code> PASSED. <code>tests/test_directory.py::test_bad_cursor_and_sort_mismatch</code> PASSED. <code>load.log</code>: <code>filtered_page seconds=0.0575 offset_param=0 row_skip=no</code> and <code>deep_keyset_page seconds=0.0405 offset_param=0 row_skip=no</code> with <code>deep_page_reached pages=40 items=50 has_next=True</code>. SQLAlchemy's SQLite dialect still renders <code>OFFSET 0</code>. The bound offset was 0, so those statements did not skip rows. The application source does not call <code>offset()</code>.</td>
+        <td><code>tests/test_directory.py::test_page_size_and_keyset</code> PASSED. <code>tests/test_directory.py::test_salary_keyset_seeks_expression_index</code> PASSED. That test runs <code>EXPLAIN</code> on the shipped page SQL and requires <code>SEARCH employees USING INDEX idx_emp_salary_usd (&lt;expr&gt;</code> with <code>SeekGE</code>, the descending page with <code>SeekLE</code>, and no <code>Rewind</code>. The same test requires <code>idx_emp_base_salary</code> and <code>SeekGE</code> for base pay. <code>load.log</code>: <code>salary_seek_page plan[0]=SEARCH employees USING INDEX idx_emp_salary_usd (&lt;expr&gt;&gt;?)</code> and <code>opcodes=Rewind:0,SeekGE:3</code>. <code>filtered_page plan[0]</code> and <code>deep_keyset_page plan[0]</code> are <code>SEARCH employees USING INDEX idx_emp_status_country (status=? AND country_code=?)</code> plus <code>USE TEMP B-TREE FOR ORDER BY</code>. Both record <code>offset_param=0 row_skip=no</code>. SQLAlchemy still renders <code>OFFSET 0</code>. The application source does not call <code>offset()</code>.</td>
       </tr>
       <tr>
         <td>A stale <code>version_id</code> returns 409 and writes no audit row.</td>
@@ -91,7 +91,7 @@
       <tr>
         <td>The seed is deterministic, the default count is 10,000, and 100,000 rows load.</td>
         <td class="pass">Pass</td>
-        <td><code>backend/app/settings.py</code> sets <code>seed_count: int = 10000</code>. <code>backend/app/seed.py</code> uses <code>Random(42)</code>. <code>tests/test_seed.py::test_seed_ten_thousand_golden_row_and_invariants</code> printed <code>USD invariant held for 10000 rows</code> and PASSED. <code>tests/test_seed.py::test_seed_without_reset_keeps_a_changed_planning_rate</code> PASSED. <code>load.log</code>: <code>seed count=100000 seconds=26.2032 complexity=O(n)</code> and <code>load_ok</code> with <code>EXIT:0</code>.</td>
+        <td><code>backend/app/settings.py</code> sets <code>seed_count: int = 10000</code>. <code>backend/app/seed.py</code> uses <code>Random(42)</code>. <code>tests/test_seed.py::test_seed_ten_thousand_golden_row_and_invariants</code> printed <code>USD invariant held for 10000 rows</code> and PASSED. <code>tests/test_seed.py::test_seed_without_reset_keeps_a_changed_planning_rate</code> PASSED. <code>load.log</code>: <code>seed count=100000 seconds=32.5978 complexity=O(n)</code> and <code>load_ok</code> with <code>EXIT:0</code>.</td>
       </tr>
       <tr>
         <td>The browser does not call FastAPI.</td>
@@ -112,11 +112,11 @@
   <ul>
     <li><code>All checks passed!</code></li>
     <li><code>RUFF_EXIT:0</code></li>
-    <li><code>85 passed in 7.32s</code></li>
+    <li><code>86 passed in 7.33s</code></li>
     <li><code>PYTEST_EXIT:0</code></li>
   </ul>
   <p>The run also printed the four locked strings named in the verification plan: the 409 detail and <code>audit_reasons=[('First',)]</code>, <code>salary order "99" before "100"</code>, <code>inclusive quartiles p25=5000000 p50=6500000 p75=11000000</code>, and <code>USD invariant held for 10000 rows</code>.</p>
-  <p>The hyphen assertions were added inside <code>test_sanitize_fts_query</code> and <code>test_query_with_quotes_and_colon_returns_200</code>. The collected count stayed 85.</p>
+  <p><code>tests/test_directory.py::test_salary_keyset_seeks_expression_index</code> PASSED in that run. The hyphen assertions remain inside <code>test_sanitize_fts_query</code> and <code>test_query_with_quotes_and_colon_returns_200</code>.</p>
 
   <h2 id="e2e">E2E</h2>
   <p><code>e2e.log</code> ends with <code>e2e_ok</code>. The client posted multipart forms to the Next server and followed the redirects. It did not call port 65524.</p>
@@ -153,53 +153,69 @@ ui_ok</pre>
   <p>The empty search was <code>q=zzzz-no-such-person-e2e</code>. After the hyphen split, that query returns HTTP 200 and the empty-state sentence. A bad cursor still renders <code>Could not load employees.</code> The FX page lists USD, EUR, INR, and JPY from the reference payload, and it includes the sentence that saving recomputes USD pay while audit history keeps the original rate. The add-employee hint <code>for example 120000.50</code> is format copy. It is not a person or a total.</p>
 
   <h2 id="load">Stress/load</h2>
-  <p><code>load.log</code> is a separate process and a separate database (<code>load.db</code>). It ends with <code>load_ok</code> and <code>EXIT:0</code>. This file was captured before the hyphen split. The measured search term was <code>kabir</code>, so that change does not alter these statements. The 100,000-row run was not repeated after the split.</p>
-  <pre>seed count=100000 seconds=26.2032 complexity=O(n)
-filtered_page seconds=0.0575 offset_param=0 row_skip=no complexity=O(limit)-after-index-seek statements=2
+  <p><code>load.log</code> is a separate process and a separate database. It ends with <code>load_ok</code> and <code>EXIT:0</code>. This run is after the salary-seek change. The script prints <code>EXPLAIN QUERY PLAN</code> and the <code>EXPLAIN</code> opcode counts for each statement. <code>row_skip=no</code> means the offset parameter was 0.</p>
+  <pre>seed count=100000 seconds=32.5978 complexity=O(n)
+filtered_page seconds=0.0572 offset_param=0 row_skip=no complexity=filter-index-scan-plus-sort-not-salary-seek-not-O(1) statements=2
+filtered_page plan[0]=SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH employees USING INDEX idx_emp_status_country (status=? AND country_code=?) ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) ; USE TEMP B-TREE FOR ORDER BY opcodes=Rewind:0,SeekGE:3,SeekLE:0,SeekGT:0,SeekLT:0
+filtered_page plan[1]=SEARCH employees USING COVERING INDEX idx_emp_status_country (status=? AND country_code=?) opcodes=Rewind:0,SeekGE:1,SeekLE:0,SeekGT:0,SeekLT:0
 filtered_page total=28641 items=50
-deep_keyset_page seconds=0.0405 offset_param=0 row_skip=no complexity=O(limit)-after-index-seek-not-O(1) statements=3
+deep_keyset_page seconds=0.0416 offset_param=0 row_skip=no complexity=filter-index-scan-plus-sort-not-salary-seek-not-O(1) statements=3
+deep_keyset_page plan[0]=SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH employees USING INDEX idx_emp_status_country (status=? AND country_code=?) ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) ; USE TEMP B-TREE FOR ORDER BY opcodes=Rewind:0,SeekGE:3,SeekLE:0,SeekGT:0,SeekLT:0
 deep_page_reached pages=40 items=50 has_next=True
-search_page seconds=0.0235 offset_param=0 row_skip=no complexity=FTS-prefix-not-O(1) statements=2
+salary_first_page seconds=0.0131 offset_param=0 row_skip=no complexity=O(limit)-ordered-salary-index-scan-not-O(1) statements=2
+salary_first_page plan[0]=SCAN employees USING INDEX idx_emp_salary_usd ; SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) opcodes=Rewind:1,SeekGE:2,SeekLE:0,SeekGT:0,SeekLT:0
+salary_seek_page seconds=0.0124 offset_param=0 row_skip=no complexity=O(limit)-after-salary-index-seek-not-O(1) statements=3
+salary_seek_page plan[0]=SEARCH employees USING INDEX idx_emp_salary_usd (&lt;expr&gt;&gt;?) ; SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) opcodes=Rewind:0,SeekGE:3,SeekLE:0,SeekGT:0,SeekLT:0
+salary_seek_reached pages=40 items=50 has_next=True
+search_page seconds=0.0238 offset_param=0 row_skip=no complexity=FTS-prefix-not-O(1) statements=2
+search_page plan[0]=SEARCH employees USING INTEGER PRIMARY KEY (rowid=?) ; LIST SUBQUERY 1 ; SCAN employees_fts VIRTUAL TABLE INDEX 0:M5 ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) ; USE TEMP B-TREE FOR ORDER BY opcodes=Rewind:1,SeekGE:2,SeekLE:0,SeekGT:0,SeekLT:0
 search_total=3116
-id_lookup seconds=0.0070 offset_param=absent row_skip=no complexity=O(1)-primary-key statements=1
-analytics seconds=0.8720 offset_param=absent row_skip=no complexity=O(n)-active-rows-not-O(1) statements=4
+id_lookup seconds=0.0066 offset_param=absent row_skip=no complexity=O(1)-primary-key statements=1
+id_lookup plan[0]=SEARCH employees USING INDEX sqlite_autoindex_employees_1 (id=?) ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) opcodes=Rewind:0,SeekGE:3,SeekLE:0,SeekGT:0,SeekLT:0
+analytics seconds=0.8603 offset_param=absent row_skip=no complexity=O(n)-active-rows-not-O(1) statements=4
+analytics plan[0]=SEARCH employees USING INDEX idx_emp_status_currency (status=?) opcodes=Rewind:0,SeekGE:1,SeekLE:0,SeekGT:0,SeekLT:0
 analytics_headcount=95998 histogram=7
-pay_update seconds=0.0196 offset_param=absent row_skip=no complexity=O(1)-point-update-plus-audit-insert statements=4
+pay_update seconds=0.0226 offset_param=absent row_skip=no complexity=O(1)-point-update-plus-audit-insert statements=4
+pay_update plan[0]=SEARCH employees USING INDEX sqlite_autoindex_employees_1 (id=?) ; SEARCH departments USING INTEGER PRIMARY KEY (rowid=?) ; SEARCH countries USING INDEX sqlite_autoindex_countries_1 (code=?) ; SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) opcodes=Rewind:0,SeekGE:3,SeekLE:0,SeekGT:0,SeekLT:0
 pay_version=2
-stale_version seconds=0.0087 offset_param=absent row_skip=no complexity=O(1)-rejected-write statements=3
+stale_version seconds=0.0100 offset_param=absent row_skip=no complexity=O(1)-rejected-write statements=3
 stale_status=409 audit_rows=1
-fx_recompute seconds=0.8139 offset_param=absent row_skip=no complexity=O(employees-on-currency)-not-O(1) statements=4
+fx_recompute seconds=0.8422 offset_param=absent row_skip=no complexity=O(employees-on-currency)-not-O(1) statements=4
+fx_recompute plan[1]=SEARCH currencies USING INDEX sqlite_autoindex_currencies_1 (code=?) ; SCAN employees opcodes=Rewind:1,SeekGE:1,SeekLE:0,SeekGT:0,SeekLT:0
 load_ok
 EXIT:0</pre>
-  <p>Thirty-nine <code>keyset_step</code> lines sit between the first filtered page and <code>deep_page_reached</code>. Each records <code>offset_param=0 row_skip=no</code>. Page 40 still had a next cursor. India is weight 30 of 100, so 28,641 active India rows is enough for 40 pages of 50.</p>
+  <p>Thirty-nine <code>keyset_step</code> lines sit between the first India page and <code>deep_page_reached</code>. Each is <code>filter-index-scan-plus-sort-not-salary-seek-not-O(1)</code> and <code>offset_param=0 row_skip=no</code>. Thirty-nine <code>salary_seek_step</code> lines sit before <code>salary_seek_reached</code>. Each is <code>O(limit)-after-salary-index-seek-not-O(1)</code>. The <code>SeekGE</code> count on the India plan is the country index and the joins. That plan does not name <code>idx_emp_salary_usd</code>.</p>
+  <p>The planning-rate line's complexity token says <code>O(employees-on-currency)</code>. Its plan says <code>SCAN employees</code>. The scan reads the employee table. It is not O(1).</p>
 
   <h2 id="profile">Profile</h2>
-  <p>The whole program is not O(1). The labels below are the ones printed by the 100,000-row run.</p>
+  <p>The whole program is not O(1). Costs below follow the plans in <code>load.log</code>, not a label chosen ahead of the run.</p>
   <table>
     <thead>
       <tr><th>Path</th><th class="num">Seconds</th><th>Rows touched</th><th>Cost</th></tr>
     </thead>
     <tbody>
-      <tr><td>Seed</td><td class="num">26.2032</td><td>100,000 inserted</td><td>O(n). Batches of 1,000, then one FTS rebuild.</td></tr>
-      <tr><td>Filtered directory page</td><td class="num">0.0575</td><td>28,641 matched, 50 returned</td><td>O(limit) after an index seek.</td></tr>
-      <tr><td>Deep keyset page (page 40)</td><td class="num">0.0405</td><td>50 returned, next cursor present</td><td>O(limit) after a seek on the sort key and <code>id</code>. Not O(1).</td></tr>
-      <tr><td>Search <code>kabir</code></td><td class="num">0.0235</td><td>3,116 matches</td><td>FTS5 prefix query. Not O(1).</td></tr>
-      <tr><td>Employee by id</td><td class="num">0.0070</td><td>1</td><td>O(1) primary-key lookup.</td></tr>
-      <tr><td>Analytics overview</td><td class="num">0.8720</td><td>95,998 active, 7 histogram buckets</td><td>O(n) over active salaries. Not O(1).</td></tr>
-      <tr><td>Pay update</td><td class="num">0.0196</td><td>version became 2</td><td>O(1) point update plus one audit insert.</td></tr>
-      <tr><td>Stale version</td><td class="num">0.0087</td><td>HTTP 409, prior audit row kept</td><td>O(1) rejected write.</td></tr>
-      <tr><td>Planning-rate recompute</td><td class="num">0.8139</td><td>employees on that currency</td><td>O(employees on that currency). Not O(1).</td></tr>
+      <tr><td>Seed</td><td class="num">32.5978</td><td>100,000 inserted</td><td>O(n). Batches of 1,000, then one FTS rebuild.</td></tr>
+      <tr><td>India, active, salary page</td><td class="num">0.0572</td><td>28,641 matched, 50 returned</td><td><code>idx_emp_status_country</code> plus <code>USE TEMP B-TREE FOR ORDER BY</code>. A filter-index scan and a sort of the matches. Not a salary-index seek. Not O(limit). Not O(1).</td></tr>
+      <tr><td>India keyset page 40</td><td class="num">0.0416</td><td>50 returned, next cursor present</td><td>Same country/status index and the same sort. The salary bound does not position that index. Not O(1).</td></tr>
+      <tr><td>Salary page, no filter, first page</td><td class="num">0.0131</td><td>50 returned</td><td><code>SCAN idx_emp_salary_usd</code> with <code>Rewind:1</code>, stopped by the limit. O(limit) for that statement. The count scans an employees index.</td></tr>
+      <tr><td>Salary page 40, no filter</td><td class="num">0.0124</td><td>50 returned, next cursor present</td><td><code>SEARCH idx_emp_salary_usd (&lt;expr&gt;&gt;?)</code>, <code>Rewind:0</code>, <code>SeekGE</code>. O(limit) after the seek. Not O(1).</td></tr>
+      <tr><td>Search <code>kabir</code></td><td class="num">0.0238</td><td>3,116 matches</td><td>FTS5 virtual-table scan, then a sort. Not O(1).</td></tr>
+      <tr><td>Employee by id</td><td class="num">0.0066</td><td>1</td><td>O(1) primary-key lookup.</td></tr>
+      <tr><td>Analytics overview</td><td class="num">0.8603</td><td>95,998 active, 7 histogram buckets</td><td><code>idx_emp_status_currency</code> over active rows. O(n). Not O(1).</td></tr>
+      <tr><td>Pay update</td><td class="num">0.0226</td><td>version became 2</td><td>O(1) primary-key update plus one audit insert.</td></tr>
+      <tr><td>Stale version</td><td class="num">0.0100</td><td>HTTP 409, <code>audit_rows=1</code></td><td>O(1) rejected write. The audit row is the successful pay change.</td></tr>
+      <tr><td>Planning-rate recompute</td><td class="num">0.8422</td><td><code>SCAN employees</code></td><td>Table scan, then primary-key updates. Not O(1).</td></tr>
     </tbody>
   </table>
-  <p>Page fetches seek with the salary expression index <code>(CAST(salary_usd_scaled AS INTEGER), id)</code> and the id tie-break, then stop at the page size. They do not walk skipped rows. FTS prefix search, inclusive quartiles, the active-salary scan, seeding, and an FX recompute all grow with the rows they read. Those algorithms were left as specified.</p>
-  <p><code>OFFSET 0</code> in the rendered SQL is the SQLite dialect default when the query has a limit and no offset clause. <code>row_skip=no</code> in the log means the bound value was 0. A non-zero offset fails the script.</p>
+  <p><code>tests/test_directory.py::test_salary_keyset_seeks_expression_index</code> is the check that base pay seeks <code>idx_emp_base_salary</code> with <code>SeekGE</code> and that a descending USD page uses <code>SeekLE</code>. The 100,000-row script measured USD salary, not base pay.</p>
+  <p><code>OFFSET 0</code> in the rendered SQL is the SQLite dialect default when the query has a limit and no offset clause. <code>row_skip=no</code> means the bound value was 0. A non-zero offset fails the script. That check does not describe the India plan.</p>
 
   <h2 id="leftovers">Leftovers</h2>
   <ul>
     <li>The demo video is not recorded. The spoken script is in the README. Recording it is outside this run.</li>
     <li>nginx-proxy-manager is not on this machine. The reachable app is <code>127.0.0.1:65525</code>. When the host service is present, it forwards to that port with scheme <code>http</code> and websockets on, and it does not forward to 65524.</li>
-    <li>GitHub Actions cannot be used as a check until the account billing limit is cleared. The local results are ruff, 85 pytest passes, the Compose launch, the end-to-end script, and the 100,000-row script.</li>
-    <li><code>load.log</code> predates the hyphen split. The logical suite that includes the hyphen assertions is the later file: <code>RUFF_EXIT:0</code>, <code>85 passed in 7.32s</code>.</li>
+    <li>GitHub Actions cannot be used as a check until the account billing limit is cleared. The local results are ruff, 86 pytest passes, the Compose launch, the end-to-end script, and the 100,000-row script.</li>
+    <li>An earlier profile called the India salary page an O(limit) seek on <code>idx_emp_salary_usd</code>. <code>EXPLAIN QUERY PLAN</code> shows <code>idx_emp_status_country</code> and <code>USE TEMP B-TREE FOR ORDER BY</code>. The load log quoted above replaces that description. <code>logical-tests.log</code> is <code>RUFF_EXIT:0</code> and <code>86 passed in 7.33s</code>.</li>
     <li>UI states were confirmed in server-rendered HTML. A desktop browser did not click the pages.</li>
     <li>Unauthenticated <code>GET /</code> is rewritten to the login document so the 200 body contains <code>CompPulse</code> and <code>{"status":"ok"}</code>. Deep links still redirect to <code>/login</code>.</li>
     <li>A stale pay form redirects to <code>?conflict=1</code>. The action does not PATCH again. The visible sentence is <code>Record was modified. Reload and try again.</code></li>

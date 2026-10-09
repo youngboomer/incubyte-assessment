@@ -92,6 +92,10 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     ON employees (CAST(salary_usd_scaled AS INTEGER), id)
     """,
     """
+    CREATE INDEX IF NOT EXISTS idx_emp_base_salary
+    ON employees (CAST(base_salary_scaled AS INTEGER), id)
+    """,
+    """
     CREATE VIRTUAL TABLE IF NOT EXISTS employees_fts USING fts5(
       employee_number, first_name, last_name, email, job_title,
       content='employees',

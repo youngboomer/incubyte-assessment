@@ -111,6 +111,7 @@ def _assert_catalog(db_path: Path) -> None:
             "idx_emp_status_country",
             "idx_emp_status_currency",
             "idx_emp_salary_usd",
+            "idx_emp_base_salary",
             "employees_fts_insert",
             "employees_fts_delete",
             "employees_fts_update",

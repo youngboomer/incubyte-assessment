@@ -173,9 +173,10 @@ CREATE INDEX idx_emp_status_dept ON employees(status, department_id);
 CREATE INDEX idx_emp_status_country ON employees(status, country_code);
 CREATE INDEX idx_emp_status_currency ON employees(status, currency_code);
 CREATE INDEX idx_emp_salary_usd ON employees (CAST(salary_usd_scaled AS INTEGER), id);
+CREATE INDEX idx_emp_base_salary ON employees (CAST(base_salary_scaled AS INTEGER), id);
 ```
 
-Text sort would order `"99"` after `"100"`. Salary order and keyset seeks use `CAST(salary_usd_scaled AS INTEGER)` so they match the index.
+Text sort would order `"99"` after `"100"`. Salary order uses `CAST(salary_usd_scaled AS INTEGER)` and `CAST(base_salary_scaled AS INTEGER)` so each sort matches its index.
 
 Audit immutability:
 
@@ -229,7 +230,7 @@ CREATE VIRTUAL TABLE employees_fts USING fts5(
 
 Insert, update, and delete triggers keep the index aligned with `employees`. Application code does not dual-write it. The seed bulk-loads employees, then `INSERT INTO employees_fts(employees_fts) VALUES('rebuild')`.
 
-The query builder strips `" * : ^ ( )`, splits on whitespace, drops empty tokens, appends `*` to each token, and joins with `AND`. An empty sanitize result skips FTS. The `MATCH` target is the FTS alias.
+A hyphen is split into a word break before sanitizing, because FTS5 would otherwise read it as a column filter. The query builder then strips `" * : ^ ( )`, splits on whitespace, drops empty tokens, appends `*` to each token, and joins with `AND`. An empty sanitize result skips FTS. The `MATCH` target is the FTS alias.
 
 ## Quartiles and totals
 
@@ -243,7 +244,9 @@ Histogram buckets in USD: 0–50k, 50–75k, 75–100k, 100–150k, 150–200k, 
 
 ## Pagination
 
-Keyset, not offset. A deep `OFFSET` walks every skipped row. The cursor is an opaque encoding of the sort name, direction, edge sort values, and `id`. The following page seeks with a tuple comparison. `id` breaks ties. The response includes `next_cursor`, `prev_cursor`, and `total`. Limit max is 100.
+Keyset, not offset. A deep `OFFSET` walks every skipped row. The cursor is an opaque encoding of the sort name, direction, edge sort values, and `id`. Text sorts compare the row as a tuple. Salary sorts expand that comparison to `salary >= bound AND (salary > bound OR id > bound)` (or the less-than form) so SQLite can `SeekGE` / `SeekLE` on `idx_emp_salary_usd` or `idx_emp_base_salary`. A row-value salary predicate is planned as a rewind from the start of that index. `id` breaks ties. The response includes `next_cursor`, `prev_cursor`, and `total`. Limit max is 100.
+
+A directory page that also filters by country or status may use `idx_emp_status_country` (or the matching filter index) and a temporary B-tree to order the matches. That plan scans the filtered set and sorts it. It is not a salary-index seek, and a later keyset page of that filter still reads the filtered set.
 
 ## Seed
 
