@@ -1,21 +1,25 @@
 import type { ReactNode } from "react";
 import { logoutAction } from "../lib/auth-actions";
+import { LogoutIcon } from "./icons";
+import { ShellNav } from "./shell-nav";
+import styles from "./shell.module.css";
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
-    <>
-      <header>
-        <strong>CompPulse</strong>
-        <nav>
-          <a href="/">Dashboard</a>
-          <a href="/employees">Employees</a>
-          <a href="/settings/fx">FX rates</a>
-          <form action={logoutAction}>
-            <button type="submit">Logout</button>
+    <div className={styles.frame}>
+      <ShellNav
+        signOut={
+          <form action={logoutAction} className={styles.signOutForm}>
+            <button type="submit" className={styles.signOut}>
+              <LogoutIcon />
+              Sign out
+            </button>
           </form>
-        </nav>
-      </header>
-      <main>{children}</main>
-    </>
+        }
+      />
+      <main className={styles.main}>
+        <div className={styles.content}>{children}</div>
+      </main>
+    </div>
   );
 }
