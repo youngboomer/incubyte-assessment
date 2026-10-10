@@ -50,7 +50,8 @@ def _stripped(value: str) -> str:
 
 
 def _scaled_amount(value: str) -> str:
-    scaled_to_decimal(value, 0)
+    if scaled_to_decimal(value, 0) < 0:
+        raise ValueError("must not be negative")
     return value
 
 

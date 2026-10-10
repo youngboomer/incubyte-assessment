@@ -365,10 +365,22 @@ def test_post_converts_jpy_after_summing_local_amounts(api: Api) -> None:
     assert gbp["salary_scale"] == 2
 
 
-def test_post_allows_negative_salary_digits(api: Api) -> None:
-    created = _create(api, base_salary_scaled="-10000", variable_pay_scaled="0")
-    assert created["base_salary_scaled"] == "-10000"
-    assert created["salary_usd_scaled"] == "-10000"
+@pytest.mark.parametrize("field", ["base_salary_scaled", "variable_pay_scaled"])
+def test_negative_pay_is_rejected(api: Api, field: str) -> None:
+    response = api.client.post(
+        "/employees", headers=api.headers(), json=_body(**{field: "-10000"})
+    )
+    assert response.status_code == 422, response.text
+    assert _query(api.db_path, "SELECT COUNT(*) FROM employees") == [(0,)]
+
+    created = _create(api)
+    change = api.client.patch(
+        f"/employees/{created['id']}/compensation",
+        headers=api.headers(),
+        json=_comp(**{field: "-10000"}),
+    )
+    assert change.status_code == 422, change.text
+    assert _query(api.db_path, "SELECT COUNT(*) FROM compensation_audit_logs") == [(0,)]
 
 
 def test_routes_require_hr_token(api: Api) -> None:
