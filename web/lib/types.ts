@@ -127,5 +127,147 @@ export type AnalyticsOverview = {
   p75_salary_usd_scaled: string;
   by_department: DepartmentBreakdown[];
   by_country: CountryBreakdown[];
+  by_level: LevelBreakdown[];
   histogram: SalaryHistogramBucket[];
+};
+
+export type Level = "IC1" | "IC2" | "IC3" | "IC4" | "IC5" | "M1" | "M2";
+
+export type EmployeeStatus = "active" | "terminated";
+
+export type SortKey =
+  | "name"
+  | "employee_number"
+  | "department"
+  | "country"
+  | "title"
+  | "base_salary"
+  | "salary_usd"
+  | "hire_date";
+
+export type SortDirection = "asc" | "desc";
+
+export type LevelBreakdown = {
+  level: string;
+  headcount: number;
+  total_salary_usd_scaled: string;
+  average_salary_usd_scaled: string;
+  min_salary_usd_scaled: string;
+  p50_salary_usd_scaled: string;
+  max_salary_usd_scaled: string;
+};
+
+export type DirectoryFilters = {
+  q?: string;
+  department_id?: string;
+  country?: string;
+  currency?: string;
+  status?: EmployeeStatus;
+  level?: Level;
+  salary_usd_min?: string;
+  salary_usd_max?: string;
+  sort?: SortKey;
+  direction?: SortDirection;
+  limit?: number;
+  cursor?: string;
+};
+
+export type ScopeFilters = {
+  department_id?: string;
+  country?: string;
+  level?: Level;
+  currency?: string;
+};
+
+export type AuditFilters = {
+  employee_id?: string;
+  department_id?: string;
+  since?: string;
+  until?: string;
+  changed_by?: string;
+  limit?: number;
+};
+
+export type EmployeeChange = {
+  id: number;
+  field: string;
+  previous_value: string;
+  new_value: string;
+  reason: string;
+  effective_date: string;
+  changed_by: string;
+  created_at: string;
+};
+
+export type EmployeeChangesPage = {
+  items: EmployeeChange[];
+};
+
+export type AuditFeedItem = AuditEntry & {
+  employee_id: string;
+  employee_number: string;
+  employee_name: string;
+  department: Department;
+};
+
+export type AuditFeedPage = {
+  items: AuditFeedItem[];
+  next_cursor: string | null;
+};
+
+export type LoginRequest = {
+  email: string;
+  password: string;
+};
+
+export type CreateEmployeeRequest = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  job_title: string;
+  department_id: number;
+  country_code: string;
+  level: Level;
+  base_salary_scaled: string;
+  variable_pay_scaled: string;
+  status: EmployeeStatus;
+  hire_date: string;
+  comp_effective_date: string;
+};
+
+export type UpdateEmployeeRequest = {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  job_title?: string;
+  department_id?: number;
+  level?: Level;
+  reason: string;
+  effective_date: string;
+  version_id: number;
+};
+
+export type ChangeStatusRequest = {
+  status: EmployeeStatus;
+  reason: string;
+  effective_date: string;
+  version_id: number;
+};
+
+export type ChangePayRequest = {
+  base_salary_scaled: string;
+  variable_pay_scaled: string;
+  reason: string;
+  effective_date: string;
+  version_id: number;
+};
+
+export type UpdateRateRequest = {
+  units_per_usd_scaled: string;
+};
+
+export type ValidationIssue = {
+  loc: (string | number)[];
+  msg: string;
+  type?: string;
 };
