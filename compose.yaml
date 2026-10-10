@@ -15,6 +15,11 @@ services:
     memswap_limit: 200m
     pids_limit: 100
     logging: *logging
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     environment:
       BACKEND_URL: http://backend:65524
       PORT: "65525"
@@ -48,13 +53,19 @@ services:
     memswap_limit: 300m
     pids_limit: 100
     logging: *logging
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/comppulse.db
       APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
       HR_EMAIL: ${HR_EMAIL:-ss@interview.chetan}
       HR_PASSWORD: ${HR_PASSWORD:-incubyte}
       HR_PASSWORD_HASH: ${HR_PASSWORD_HASH:-}
-      APP_ENV: ${APP_ENV:-development}
+      APP_ENV: ${APP_ENV:-production}
+      TRUST_PROXY_HEADERS: "true"
       TOKEN_MAX_AGE_SECONDS: ${TOKEN_MAX_AGE_SECONDS:-43200}
       SEED_COUNT: ${SEED_COUNT:-10000}
     volumes:
