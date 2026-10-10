@@ -17,3 +17,5 @@ web/out/
 *.db-shm
 
 .DS_Store
+
+real-names-folder/
