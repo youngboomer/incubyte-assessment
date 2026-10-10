@@ -1,0 +1,47 @@
+.header {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+}
+
+.text {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.count {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.subtitle {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

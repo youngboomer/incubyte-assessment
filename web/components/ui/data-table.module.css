@@ -1,0 +1,180 @@
+.wrap {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.table tbody,
+.table tr,
+.table td {
+  display: block;
+}
+
+.table tbody tr {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.table tbody tr:first-child {
+  border-top: 0;
+}
+
+.table td {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
+  text-align: right;
+}
+
+.table td::before {
+  content: attr(data-label);
+  flex: none;
+  max-width: 45%;
+  color: var(--text-subtle);
+  font-size: 12px;
+  text-align: left;
+}
+
+.table td.primary {
+  justify-content: flex-start;
+  padding-bottom: var(--space-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.table td.primary::before {
+  content: none;
+}
+
+.table td:empty {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .wrap {
+    overflow-x: auto;
+  }
+
+  .table thead {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .table {
+    display: table;
+  }
+
+  .table thead {
+    display: table-header-group;
+  }
+
+  .table tbody {
+    display: table-row-group;
+  }
+
+  .table tr {
+    display: table-row;
+  }
+
+  .table th,
+  .table td {
+    display: table-cell;
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .table td::before {
+    content: none;
+  }
+
+  .table td:empty {
+    display: table-cell;
+  }
+
+  .table tbody tr {
+    padding: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .table tbody tr:hover {
+    background: var(--bg);
+  }
+
+  .table th {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-subtle);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .table td.primary {
+    padding-bottom: var(--space-3);
+    font-size: 13px;
+  }
+
+  .table .numeric {
+    text-align: right;
+  }
+}
+
+.table td.numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+.sortable {
+  padding: 0 !important;
+}
+
+.sortLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 40px;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-subtle);
+  text-decoration: none;
+}
+
+.numeric .sortLink {
+  justify-content: flex-end;
+}
+
+.sortLink:hover {
+  color: var(--text);
+}
+
+.sorted {
+  color: var(--text);
+}
+
+.arrow {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
