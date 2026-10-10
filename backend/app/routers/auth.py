@@ -2,7 +2,7 @@ import hmac
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,8 +22,8 @@ _REVOKE_TOKEN_SQL = text(
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str
-    password: str
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=256)
 
 
 class LoginResponse(BaseModel):
