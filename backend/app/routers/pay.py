@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from fastapi import Depends, HTTPException
@@ -24,6 +25,8 @@ from app.deps import require_hr
 from app.money import scaled_to_decimal
 from app.routers.employees import router
 
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
 
 class _PostEmployeeRoute(APIRoute):
     """A wrong method is not a partial match.
@@ -37,6 +40,13 @@ class _PostEmployeeRoute(APIRoute):
         if match == Match.PARTIAL:
             return Match.NONE, {}
         return match, child_scope
+
+
+def _stripped(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("must not be empty")
+    return value
 
 
 def _scaled_amount(value: str) -> str:
@@ -72,8 +82,13 @@ class EmployeeCreate(BaseModel):
     @field_validator("first_name", "last_name", "email", "job_title", "country_code")
     @classmethod
     def _non_empty(cls, value: str) -> str:
-        if not value:
-            raise ValueError("must not be empty")
+        return _stripped(value)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        if _EMAIL_RE.fullmatch(value) is None:
+            raise ValueError("must be an email address")
         return value
 
     @field_validator("base_salary_scaled", "variable_pay_scaled")
@@ -113,9 +128,7 @@ class CompensationPatch(BaseModel):
     @field_validator("reason")
     @classmethod
     def _reason(cls, value: str) -> str:
-        if not value:
-            raise ValueError("reason is required")
-        return value
+        return _stripped(value)
 
 
 async def post_employee(

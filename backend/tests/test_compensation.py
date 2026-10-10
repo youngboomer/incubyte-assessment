@@ -288,12 +288,28 @@ def test_post_unknown_department_or_country_is_422(api: Api) -> None:
         {"base_salary_scaled": "9223372036854775808"},
         {"currency_code": "EUR"},
         {"first_name": ""},
+        {"first_name": "   "},
+        {"job_title": "\t"},
+        {"email": "not-an-email"},
+        {"email": "a@b"},
+        {"email": "a b@acme.test"},
         {"bonus": "1"},
     ],
 )
 def test_post_rejects_invalid_body(api: Api, overrides: dict[str, object]) -> None:
     response = api.client.post("/employees", headers=api.headers(), json=_body(**overrides))
     assert response.status_code == 422, response.text
+
+
+def test_post_trims_surrounding_whitespace(api: Api) -> None:
+    response = api.client.post(
+        "/employees",
+        headers=api.headers(),
+        json=_body(first_name=" Ada ", email=" ada.trim@acme.test "),
+    )
+    assert response.status_code in (200, 201), response.text
+    assert response.json()["first_name"] == "Ada"
+    assert response.json()["email"] == "ada.trim@acme.test"
 
 
 def test_post_rejects_numeric_salary(api: Api) -> None:
@@ -562,6 +578,7 @@ def test_jpy_audit_uses_currency_scale(api: Api) -> None:
     "payload",
     [
         {"reason": ""},
+        {"reason": "   "},
         {"base_salary_scaled": "12.00"},
         {"base_salary_scaled": "1e5"},
         {"note": "nope"},
