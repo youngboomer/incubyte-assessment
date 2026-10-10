@@ -1,13 +1,20 @@
+import re
+
 _FTS_STRIP = str.maketrans("", "", '"*:^()')
+_FTS_WORD = re.compile(r"\w+")
+_FTS_OPERATORS = frozenset({"AND", "OR", "NOT", "NEAR"})
 
 
 def sanitize_fts_query(query: str) -> str | None:
     """Turn free text into an FTS5 prefix query, or None when nothing remains.
 
-    A hyphen is an FTS5 operator. Splitting on it keeps a name like
-    ``Mary-Jane`` from being read as a column filter.
+    FTS5 barewords allow only word characters, so every other character
+    separates tokens, as the unicode61 tokenizer does. Operator words are
+    quoted so they match as text.
     """
-    tokens = [token for token in query.replace("-", " ").translate(_FTS_STRIP).split() if token]
+    tokens = _FTS_WORD.findall(query.translate(_FTS_STRIP))
     if not tokens:
         return None
-    return " AND ".join(f"{token}*" for token in tokens)
+    return " AND ".join(
+        f'"{token}"*' if token in _FTS_OPERATORS else f"{token}*" for token in tokens
+    )

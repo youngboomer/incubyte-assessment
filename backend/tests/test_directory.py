@@ -221,6 +221,9 @@ def test_sanitize_fts_query() -> None:
     assert sanitize_fts_query("x^y") == "xy*"
     assert sanitize_fts_query('"foo:bar"') == "foobar*"
     assert sanitize_fts_query("Mary-Jane") == "Mary* AND Jane*"
+    assert sanitize_fts_query("a.b@c.test") == "a* AND b* AND c* AND test*"
+    assert sanitize_fts_query("...") is None
+    assert sanitize_fts_query("ada AND okoye") == 'ada* AND "AND"* AND okoye*'
 
 
 def test_page_size_and_keyset(api: tuple[TestClient, Settings, Path]) -> None:
@@ -948,3 +951,39 @@ def test_reference(api: tuple[TestClient, Settings, Path]) -> None:
     assert body["levels"] == _LEVELS
     assert body["statuses"] == _STATUSES
     _assert_no_float(body)
+
+
+@pytest.mark.parametrize("char", list(".@+/\\'[]{}<>!#$%&=,;?~|`"))
+def test_query_with_punctuation_returns_200(
+    api: tuple[TestClient, Settings, Path], char: str
+) -> None:
+    client, settings, db_path = api
+    _seed(db_path, [_employee(id="hit", first_name="Abcd", email="hit@acme.test")])
+    response = client.get("/employees", params={"q": f"ab{char}cd"}, headers=_auth(settings))
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("operator", ["AND", "OR", "NOT", "NEAR"])
+def test_query_with_fts_operator_word_returns_200(
+    api: tuple[TestClient, Settings, Path], operator: str
+) -> None:
+    client, settings, db_path = api
+    _seed(db_path, [_employee(id="hit", first_name="Abcd", email="hit@acme.test")])
+    response = client.get("/employees", params={"q": operator}, headers=_auth(settings))
+    assert response.status_code == 200, response.text
+
+
+def test_search_finds_employee_by_pasted_email(api: tuple[TestClient, Settings, Path]) -> None:
+    client, settings, db_path = api
+    _seed(
+        db_path,
+        [
+            _employee(id="hit", email="ada.okoye.1@acme.test"),
+            _employee(id="miss", employee_number="EMP-2", email="other.person.2@acme.test"),
+        ],
+    )
+    response = client.get(
+        "/employees", params={"q": "ada.okoye.1@acme.test"}, headers=_auth(settings)
+    )
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == ["hit"]
