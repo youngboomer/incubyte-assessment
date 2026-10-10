@@ -1,4 +1,4 @@
-# Together the two containers stay within 0.3 CPU and 250 MB.
+# Together the two containers stay within 0.75 CPU and 500 MB.
 x-logging: &logging
   driver: json-file
   options:
@@ -10,16 +10,16 @@ services:
     build: ./web
     container_name: comppulse-frontend
     restart: unless-stopped
-    cpus: 0.15
-    mem_limit: 140m
-    memswap_limit: 140m
+    cpus: 0.30
+    mem_limit: 200m
+    memswap_limit: 200m
     pids_limit: 100
     logging: *logging
     environment:
       BACKEND_URL: http://backend:65524
       PORT: "65525"
       HOSTNAME: "0.0.0.0"
-      NODE_OPTIONS: --max-old-space-size=96
+      NODE_OPTIONS: --max-old-space-size=128
     ports:
       - "127.0.0.1:65525:65525"
     networks:
@@ -43,9 +43,9 @@ services:
     build: ./backend
     container_name: comppulse-backend
     restart: unless-stopped
-    cpus: 0.15
-    mem_limit: 110m
-    memswap_limit: 110m
+    cpus: 0.45
+    mem_limit: 300m
+    memswap_limit: 300m
     pids_limit: 100
     logging: *logging
     environment:
