@@ -105,6 +105,10 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     ON employees (CAST(salary_usd_scaled AS INTEGER), id)
     """,
     """
+    CREATE INDEX IF NOT EXISTS idx_audit_created
+    ON compensation_audit_logs(created_at, id)
+    """,
+    """
     CREATE INDEX IF NOT EXISTS idx_emp_base_salary
     ON employees (CAST(base_salary_scaled AS INTEGER), id)
     """,
