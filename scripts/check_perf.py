@@ -250,9 +250,10 @@ def main() -> None:
             f"has_next={salary_last['next_cursor'] is not None}"
         )
 
+        search_term = page("limit=1")["items"][0]["first_name"]
         found = timed(
             "search_page",
-            lambda: page("q=kabir&limit=20"),
+            lambda: page(f"q={search_term}&limit=20"),
         )
         print(f"search_total={found['total']}")
         employee_id = found["items"][0]["id"]
