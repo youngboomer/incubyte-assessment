@@ -454,18 +454,20 @@ async def _upsert_reference(conn: AsyncConnection, *, restore_rates: bool) -> No
         )
 
 
-def _audit_delete_trigger_sql() -> str:
+def _delete_trigger_sql(trigger_name: str) -> str:
     for statement in SCHEMA_STATEMENTS:
-        if "compensation_audit_logs_no_delete" in statement:
+        if trigger_name in statement:
             return statement
-    raise RuntimeError("audit delete trigger is missing from SCHEMA_STATEMENTS")
+    raise RuntimeError(f"{trigger_name} is missing from SCHEMA_STATEMENTS")
 
 
 async def _clear_people(conn: AsyncConnection) -> None:
     # Audit rows are append-only. Drop that trigger for this delete, then put it back.
-    await conn.exec_driver_sql("DROP TRIGGER IF EXISTS compensation_audit_logs_no_delete")
-    await conn.exec_driver_sql("DELETE FROM compensation_audit_logs")
-    await conn.exec_driver_sql(_audit_delete_trigger_sql())
+    for table in ("compensation_audit_logs", "employee_change_logs"):
+        trigger = f"{table}_no_delete"
+        await conn.exec_driver_sql(f"DROP TRIGGER IF EXISTS {trigger}")
+        await conn.exec_driver_sql(f"DELETE FROM {table}")
+        await conn.exec_driver_sql(_delete_trigger_sql(trigger))
     await conn.exec_driver_sql("DELETE FROM employees")
 
 

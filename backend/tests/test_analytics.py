@@ -91,6 +91,7 @@ def _insert_employee(
     currency_code: str,
     salary_usd_scaled: str,
     status: str = "active",
+    level: str = "IC3",
 ) -> None:
     connection.execute(
         """
@@ -101,7 +102,7 @@ def _insert_employee(
           status, hire_date, comp_effective_date, version_id, created_at, updated_at
         ) VALUES (
           ?, ?, 'Ada', 'Lovelace', ?, 'Engineer',
-          ?, ?, ?, 'IC3',
+          ?, ?, ?, ?,
           ?, '0', ?,
           ?, '2021-03-15', '2025-04-01', 1, '2021-03-15T00:00:00Z', '2025-04-01T00:00:00Z'
         )
@@ -113,6 +114,7 @@ def _insert_employee(
             department_id,
             country_code,
             currency_code,
+            level,
             salary_usd_scaled,
             salary_usd_scaled,
             status,
@@ -120,10 +122,14 @@ def _insert_employee(
     )
 
 
-def _overview(settings: Settings, headers: dict[str, str] | None = None) -> dict[str, object]:
+def _overview(
+    settings: Settings,
+    headers: dict[str, str] | None = None,
+    params: dict[str, object] | None = None,
+) -> dict[str, object]:
     app = create_app(settings)
     with TestClient(app) as client:
-        response = client.get("/analytics/overview", headers=headers)
+        response = client.get("/analytics/overview", headers=headers, params=params)
     assert response.status_code == 200, response.text
     body: dict[str, object] = response.json()
     _assert_no_floats(body)
@@ -189,6 +195,7 @@ def test_empty_active_set_is_zero(tmp_path: Path) -> None:
         "p75_salary_usd_scaled": "0",
         "by_department": [],
         "by_country": [],
+        "by_level": [],
         "histogram": _histogram((0, 0, 0, 0, 0, 0, 0)),
     }
 
@@ -359,3 +366,179 @@ def test_histogram_bucket_edges(tmp_path: Path) -> None:
     body = _overview(settings, _auth(settings))
     assert body["headcount"] == len(salaries)
     assert body["histogram"] == _histogram((3, 2, 2, 2, 2, 2, 2))
+
+
+def _seed_scoped(connection: sqlite3.Connection) -> None:
+    rows = [
+        ("m1", 2, "GB", "GBP", "8000000", "active", "M1"),
+        ("a1", 1, "US", "USD", "100", "active", "IC1"),
+        ("b1", 2, "IN", "INR", "5000000", "active", "IC3"),
+        ("a2", 1, "US", "USD", "101", "active", "IC1"),
+        ("d3", 2, "US", "USD", "2000", "active", "IC2"),
+        ("m2", 3, "GB", "GBP", "12000000", "active", "M1"),
+        ("d1", 1, "IN", "INR", "1000", "active", "IC2"),
+        ("d2", 1, "US", "USD", "3000", "active", "IC2"),
+        ("t1", 1, "US", "USD", "999999999", "terminated", "IC1"),
+        ("t2", 3, "DE", "EUR", "888888888", "terminated", "M2"),
+    ]
+    for employee_id, department_id, country, currency, salary, status, level in rows:
+        _insert_employee(
+            connection, employee_id, department_id, country, currency, salary, status, level
+        )
+
+
+def _level(
+    level: str, headcount: int, total: int, average: int, low: int, median: int, high: int
+) -> dict[str, object]:
+    return {
+        "level": level,
+        "headcount": headcount,
+        "total_salary_usd_scaled": str(total),
+        "average_salary_usd_scaled": str(average),
+        "min_salary_usd_scaled": str(low),
+        "p50_salary_usd_scaled": str(median),
+        "max_salary_usd_scaled": str(high),
+    }
+
+
+_IC1 = _level("IC1", 2, 201, 100, 100, 100, 101)
+_IC2 = _level("IC2", 3, 6000, 2000, 1000, 2000, 3000)
+_IC3 = _level("IC3", 1, 5000000, 5000000, 5000000, 5000000, 5000000)
+_M1 = _level("M1", 2, 20000000, 10000000, 8000000, 10000000, 12000000)
+
+
+def _names(body: dict[str, object], key: str, field: str) -> list[object]:
+    rows = body[key]
+    assert isinstance(rows, list)
+    return [row[field] for row in rows]
+
+
+def test_by_level_unfiltered_ordered_and_half_even(tmp_path: Path) -> None:
+    # IC1 holds 100 and 101 cents. Mean and median are both 100.5, half-even gives 100.
+    # IC3 has one person, so every figure equals that salary.
+    # M2 has only a terminated employee, so it is absent.
+    settings = _prepare(tmp_path, _seed_scoped)
+    body = _overview(settings, _auth(settings))
+    assert body["headcount"] == 8
+    assert body["total_salary_usd_scaled"] == "25006201"
+    assert body["by_level"] == [_IC1, _IC2, _IC3, _M1]
+
+
+def test_filter_department(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    body = _overview(settings, _auth(settings), {"department_id": 1})
+    assert body["headcount"] == 4
+    assert body["total_salary_usd_scaled"] == "4201"
+    assert body["by_level"] == [_IC1, _level("IC2", 2, 4000, 2000, 1000, 2000, 3000)]
+    assert _names(body, "by_department", "department_name") == ["Engineering"]
+
+
+def test_filter_country(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    body = _overview(settings, _auth(settings), {"country": "IN"})
+    assert body["headcount"] == 2
+    assert body["total_salary_usd_scaled"] == "5001000"
+    assert body["by_level"] == [_level("IC2", 1, 1000, 1000, 1000, 1000, 1000), _IC3]
+    assert _names(body, "by_country", "country_code") == ["IN"]
+
+
+def test_filter_level(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    body = _overview(settings, _auth(settings), {"level": "M1"})
+    assert body["headcount"] == 2
+    assert body["total_salary_usd_scaled"] == "20000000"
+    assert body["p50_salary_usd_scaled"] == "10000000"
+    assert body["by_level"] == [_M1]
+
+
+def test_filter_currency(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    body = _overview(settings, _auth(settings), {"currency": "GBP"})
+    assert body["headcount"] == 2
+    assert body["by_level"] == [_M1]
+    assert _names(body, "by_country", "country_code") == ["GB"]
+
+
+def test_filters_combine_with_and(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    body = _overview(
+        settings,
+        _auth(settings),
+        {"department_id": 1, "country": "US", "level": "IC2", "currency": "USD"},
+    )
+    assert body["headcount"] == 1
+    assert body["total_salary_usd_scaled"] == "3000"
+    assert body["by_level"] == [_level("IC2", 1, 3000, 3000, 3000, 3000, 3000)]
+
+    body = _overview(settings, _auth(settings), {"department_id": 2, "country": "US"})
+    assert body["headcount"] == 1
+    assert body["by_level"] == [_level("IC2", 1, 2000, 2000, 2000, 2000, 2000)]
+
+
+def test_filter_never_includes_terminated(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    assert _overview(settings, _auth(settings), {"level": "M2"})["headcount"] == 0
+    assert _overview(settings, _auth(settings), {"country": "DE"})["headcount"] == 0
+    body = _overview(settings, _auth(settings), {"level": "IC1"})
+    assert body["headcount"] == 2
+    assert body["total_salary_usd_scaled"] == "201"
+
+
+def test_empty_scope_is_zero_shape(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    empty = {
+        "headcount": 0,
+        "total_salary_usd_scaled": "0",
+        "salary_usd_scale": 2,
+        "average_salary_usd_scaled": "0",
+        "p25_salary_usd_scaled": "0",
+        "p50_salary_usd_scaled": "0",
+        "p75_salary_usd_scaled": "0",
+        "by_department": [],
+        "by_country": [],
+        "by_level": [],
+        "histogram": _histogram((0, 0, 0, 0, 0, 0, 0)),
+    }
+    for params in (
+        {"department_id": 999},
+        {"country": "ZZ"},
+        {"currency": "JPY"},
+        {"department_id": 3, "country": "US"},
+    ):
+        assert _overview(settings, _auth(settings), params) == empty
+
+
+def test_unknown_level_is_422(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    app = create_app(settings)
+    with TestClient(app) as client:
+        for level in ("IC9", "ic1", "", "M3"):
+            response = client.get(
+                "/analytics/overview", headers=_auth(settings), params={"level": level}
+            )
+            assert response.status_code == 422, level
+
+
+def test_filtered_breakdowns_sum_to_headcount(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    for params in (
+        None,
+        {"department_id": 1},
+        {"country": "US"},
+        {"level": "IC2"},
+        {"currency": "GBP"},
+        {"department_id": 2, "level": "IC2"},
+        {"country": "ZZ"},
+    ):
+        body = _overview(settings, _auth(settings), params)
+        for key in ("by_department", "by_country", "by_level"):
+            assert sum(_names(body, key, "headcount")) == body["headcount"], (params, key)
+        assert sum(_names(body, "histogram", "count")) == body["headcount"], params
+
+
+def test_filtered_overview_requires_bearer(tmp_path: Path) -> None:
+    settings = _prepare(tmp_path, _seed_scoped)
+    app = create_app(settings)
+    with TestClient(app) as client:
+        response = client.get("/analytics/overview", params={"level": "IC1", "country": "US"})
+        assert response.status_code == 401

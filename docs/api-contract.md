@@ -154,6 +154,54 @@ Currency comes from the country. Response is the employee object, `version_id` 1
 }
 ```
 
+`PATCH /employees/{id}`
+
+```json
+{
+  "job_title": "Staff Engineer",
+  "department_id": 2,
+  "reason": "Promotion",
+  "effective_date": "2026-05-01",
+  "version_id": 1
+}
+```
+
+Optional fields: `first_name`, `last_name`, `email`, `job_title`, `department_id`, `level`. At least one is required, and none may be null. Strings are trimmed and must not be empty, `email` must look like an email, `level` must be a known level. Country and currency cannot be changed, and any other field is rejected with 422. `reason` (non-blank), `effective_date` and `version_id` are required. Success returns the employee object with `version_id` incremented and writes one change-log row per field whose value actually changed. If nothing changed, nothing is written and `version_id` stays the same (a stale `version_id` is still 409). Stale `version_id`: 409 `{ "detail": "Record was modified. Reload and try again." }`, nothing written. Duplicate email: 409. Unknown department: 422. Missing id: 404.
+
+`POST /employees/{id}/status`
+
+```json
+{
+  "status": "terminated",
+  "reason": "Resigned",
+  "effective_date": "2026-06-30",
+  "version_id": 2
+}
+```
+
+`status` is `active` or `terminated`. `reason` is required and non-blank. Success returns the employee object with `version_id` incremented and one change-log row with `field` `status`. Setting the status the employee already has: 409 `{ "detail": "Employee is already terminated" }`. Stale `version_id`: 409, nothing written. Missing id: 404. Terminated employees drop out of the analytics active set.
+
+`GET /employees/{id}/changes` returns the change log newest first. Rows are append-only. `previous_value` and `new_value` are text. `department_id` changes log department ids.
+
+```json
+{
+  "items": [
+    {
+      "id": 4,
+      "field": "status",
+      "previous_value": "active",
+      "new_value": "terminated",
+      "reason": "Resigned",
+      "effective_date": "2026-06-30",
+      "changed_by": "hr@acme.test",
+      "created_at": "2026-06-30T09:00:00Z"
+    }
+  ]
+}
+```
+
+Missing id: 404.
+
 ## Audit feed
 
 `GET /audit` returns pay changes across all employees from `compensation_audit_logs`, newest first (`created_at` desc, then `id` desc). Requires the HR bearer token. Read-only.
@@ -197,6 +245,7 @@ Each item has every field of the per-employee audit item above, plus `employee_i
 }
 ```
 
+
 ## Compensation
 
 `PATCH /employees/{id}/compensation`
@@ -218,6 +267,17 @@ Each item has every field of the per-employee audit item above, plus `employee_i
 `GET /analytics/overview`
 
 Active employees only. Money figures in the payload are USD digit strings at scale 2, except `headcount`.
+
+Optional query parameters narrow the scope. They combine with AND, on top of the active-only rule.
+
+| Param | Meaning |
+| --- | --- |
+| `department_id` | Integer department id. |
+| `country` | Country code, matched exactly (for example `US`). |
+| `level` | One of `IC1`, `IC2`, `IC3`, `IC4`, `IC5`, `M1`, `M2`. Anything else: 422. |
+| `currency` | Pay currency code, matched exactly (for example `GBP`). |
+
+Every figure in the response, including the breakdowns and the histogram, is computed over the scoped set. An unknown department, country or currency, or a combination that matches nobody, is not an error. It returns the zeroed shape with empty `by_department`, `by_country`, `by_level` and zero-count histogram buckets.
 
 ```json
 {
@@ -246,6 +306,17 @@ Active employees only. Money figures in the payload are USD digit strings at sca
       "average_salary_usd_scaled": "18000000"
     }
   ],
+  "by_level": [
+    {
+      "level": "IC1",
+      "headcount": 900,
+      "total_salary_usd_scaled": "4500000000",
+      "average_salary_usd_scaled": "5000000",
+      "min_salary_usd_scaled": "4000000",
+      "p50_salary_usd_scaled": "5000000",
+      "max_salary_usd_scaled": "6500000"
+    }
+  ],
   "histogram": [
     { "label": "0–50k", "count": 400 },
     { "label": "50–75k", "count": 800 },
@@ -259,6 +330,8 @@ Active employees only. Money figures in the payload are USD digit strings at sca
 ```
 
 `average_salary_usd_scaled` is half-even rounded to cents. Quartiles use `statistics.quantiles(..., n=4, method="inclusive")`.
+
+`by_level` has one entry per level with at least one employee in scope, ordered IC1 to IC5, M1, M2. `p50_salary_usd_scaled` is the inclusive median, half-even rounded to cents like the average. A level with one person reports that salary for min, p50 and max.
 
 ## Planning rates
 
@@ -278,5 +351,5 @@ Scale is 6. The handler recomputes `salary_usd_scaled` for every employee on tha
 | --- | --- |
 | 401 | Missing or bad token, or bad login |
 | 404 | Employee or currency not found |
-| 409 | Stale `version_id`, or duplicate email |
+| 409 | Stale `version_id`, duplicate email, or setting the status an employee already has |
 | 422 | Validation, bad cursor, bad sort, money that is not a digit string |

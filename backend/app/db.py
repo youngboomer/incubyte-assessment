@@ -76,6 +76,19 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS employee_change_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL REFERENCES employees(id),
+      field TEXT NOT NULL,
+      previous_value TEXT,
+      new_value TEXT,
+      reason TEXT NOT NULL,
+      effective_date TEXT NOT NULL,
+      changed_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+    """,
+    """
     CREATE INDEX IF NOT EXISTS idx_emp_status_dept
     ON employees(status, department_id)
     """,
@@ -153,6 +166,20 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     BEFORE DELETE ON compensation_audit_logs
     BEGIN
       SELECT RAISE(ABORT, 'audit log is append-only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS employee_change_logs_no_update
+    BEFORE UPDATE ON employee_change_logs
+    BEGIN
+      SELECT RAISE(ABORT, 'change log is append-only');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS employee_change_logs_no_delete
+    BEFORE DELETE ON employee_change_logs
+    BEGIN
+      SELECT RAISE(ABORT, 'change log is append-only');
     END
     """,
 )
