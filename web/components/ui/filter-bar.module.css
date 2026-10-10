@@ -1,0 +1,134 @@
+.bar {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  font-size: 13px;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  display: inline-flex;
+  transform: translateY(-50%);
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px var(--space-3) 6px 36px;
+  font-size: 13px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.badge {
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--text);
+  background: var(--border);
+  border-radius: 10px;
+}
+
+.caret {
+  transition: transform 0.12s;
+}
+
+.caretOpen {
+  transform: rotate(180deg);
+}
+
+.panel {
+  display: none;
+}
+
+.panelOpen {
+  display: block;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: var(--space-3);
+}
+
+.submit {
+  justify-self: start;
+}
+
+.chips {
+  min-width: 0;
+}
+
+@media (pointer: coarse) {
+  .searchInput,
+  .toggle {
+    min-height: var(--tap);
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 720px) {
+  .form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--space-3);
+  }
+
+  .top {
+    grid-column: 1 / -1;
+  }
+
+  .toggle {
+    display: none;
+  }
+
+  .panel {
+    display: block;
+    grid-column: 1;
+  }
+
+  .submit {
+    grid-column: 2;
+  }
+}
