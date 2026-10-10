@@ -16,6 +16,8 @@ FX_SCALE = 6
 USD_SCALE = 2
 LEVELS = frozenset({"IC1", "IC2", "IC3", "IC4", "IC5", "M1", "M2"})
 STATUSES = frozenset({"active", "terminated"})
+_NUMBER_ATTEMPTS = 10
+_NUMBER_TAKEN = "Employee number already exists"
 
 # RETURNING id is set only when the version predicate matches. The FTS trigger
 # also writes on this update, so changes() is not a reliable row count.
@@ -217,7 +219,7 @@ def _conflict_from_integrity(exc: IntegrityError) -> Conflict:
     if "unique" not in message:
         raise exc
     if "employee_number" in message:
-        return Conflict("Employee number already exists")
+        return Conflict(_NUMBER_TAKEN)
     return Conflict("Email already exists")
 
 
@@ -273,40 +275,45 @@ async def create_employee(
 
     now = utc_timestamp()
     employee_id = str(uuid.uuid4())
-    employee_number = await _next_employee_number(session)
-    try:
-        await session.execute(
-            insert(Employee).values(
-                id=employee_id,
-                employee_number=employee_number,
-                first_name=new_employee.first_name,
-                last_name=new_employee.last_name,
-                email=new_employee.email,
-                job_title=new_employee.job_title,
-                department_id=new_employee.department_id,
-                country_code=new_employee.country_code,
-                currency_code=currency_code,
-                level=new_employee.level,
-                base_salary_scaled=new_employee.base_salary_scaled,
-                variable_pay_scaled=new_employee.variable_pay_scaled,
-                salary_usd_scaled=usd,
-                status=new_employee.status,
-                hire_date=new_employee.hire_date,
-                comp_effective_date=new_employee.comp_effective_date,
-                version_id=1,
-                created_at=now,
-                updated_at=now,
+    for attempt in range(_NUMBER_ATTEMPTS):
+        employee_number = await _next_employee_number(session)
+        try:
+            await session.execute(
+                insert(Employee).values(
+                    id=employee_id,
+                    employee_number=employee_number,
+                    first_name=new_employee.first_name,
+                    last_name=new_employee.last_name,
+                    email=new_employee.email,
+                    job_title=new_employee.job_title,
+                    department_id=new_employee.department_id,
+                    country_code=new_employee.country_code,
+                    currency_code=currency_code,
+                    level=new_employee.level,
+                    base_salary_scaled=new_employee.base_salary_scaled,
+                    variable_pay_scaled=new_employee.variable_pay_scaled,
+                    salary_usd_scaled=usd,
+                    status=new_employee.status,
+                    hire_date=new_employee.hire_date,
+                    comp_effective_date=new_employee.comp_effective_date,
+                    version_id=1,
+                    created_at=now,
+                    updated_at=now,
+                )
             )
-        )
-        created = await _fetch_employee(session, employee_id)
-        if created is None:
+            created = await _fetch_employee(session, employee_id)
+            if created is None:
+                await session.rollback()
+                return Unprocessable("Unknown department")
+            await session.commit()
+        except IntegrityError as exc:
             await session.rollback()
-            return Unprocessable("Unknown department")
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        return _conflict_from_integrity(exc)
-    return _employee_payload(created)
+            conflict = _conflict_from_integrity(exc)
+            if conflict.detail == _NUMBER_TAKEN and attempt + 1 < _NUMBER_ATTEMPTS:
+                continue
+            return conflict
+        return _employee_payload(created)
+    raise AssertionError("unreachable: the last attempt returns")
 
 
 async def update_compensation(

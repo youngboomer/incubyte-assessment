@@ -1,6 +1,7 @@
 import sqlite3
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -256,6 +257,18 @@ def test_post_duplicate_employee_number_is_conflict(
     assert response.status_code == 409, response.text
     assert response.json() == {"detail": "Employee number already exists"}
     assert _query(api.db_path, "SELECT COUNT(*) FROM employees") == [(1,)]
+
+
+def test_concurrent_creates_all_succeed_with_distinct_numbers(api: Api) -> None:
+    def _post(index: int) -> int:
+        body = _body(email=f"race.{index}@acme.test")
+        return api.client.post("/employees", headers=api.headers(), json=body).status_code
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = list(pool.map(_post, range(8)))
+    assert statuses == [200] * 8
+    numbers = _query(api.db_path, "SELECT employee_number FROM employees")
+    assert len({number for (number,) in numbers}) == 8
 
 
 def test_post_unknown_department_or_country_is_422(api: Api) -> None:
