@@ -200,6 +200,13 @@ def _fts_clause(match_query: str) -> ColumnElement[bool]:
     return literal_column("employees.rowid").in_(rowids)
 
 
+def _employee_number_for(q: str) -> str | None:
+    digits = q.strip()
+    if not (digits.isascii() and digits.isdigit()) or len(digits) > 9:
+        return None
+    return f"EMP-{int(digits):05d}"
+
+
 def _apply_filters(
     stmt: Select[Any],
     *,
@@ -229,7 +236,10 @@ def _apply_filters(
         clauses.append(cast(Employee.salary_usd_scaled, Integer) <= salary_usd_max)
     if q:
         match_query = sanitize_fts_query(q)
-        if match_query is not None:
+        number = _employee_number_for(q)
+        if match_query is not None and number is not None:
+            clauses.append(or_(_fts_clause(match_query), Employee.employee_number == number))
+        elif match_query is not None:
             clauses.append(_fts_clause(match_query))
     if clauses:
         stmt = stmt.where(*clauses)

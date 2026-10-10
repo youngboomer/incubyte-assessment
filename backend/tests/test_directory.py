@@ -1011,3 +1011,51 @@ def test_csv_neutralises_formula_cells(api: tuple[TestClient, Settings, Path]) -
     assert row["title"] == "'+cmd"
     assert row["email"] == "formula@acme.test"
     assert row["base major"] == "-120000.50"
+
+
+def test_digit_search_finds_the_employee_number(api: tuple[TestClient, Settings, Path]) -> None:
+    client, settings, db_path = api
+    headers = _auth(settings)
+    _seed(
+        db_path,
+        [
+            _employee(id="a", employee_number="EMP-00051", email="a@acme.test", first_name="Ada"),
+            _employee(id="b", employee_number="EMP-00510", email="b@acme.test", first_name="Bea"),
+            _employee(id="c", employee_number="EMP-00052", email="c@acme.test", first_name="Cleo"),
+        ],
+    )
+    for query in ("51", "051", "00051", " 51 "):
+        assert _ids(client, headers, q=query) == ["a"], query
+    assert _ids(client, headers, q="99") == []
+    assert _ids(client, headers, q="51", country="DE") == []
+    assert _ids(client, headers, q="0005", sort="employee_number") == ["a", "c"]
+
+
+def test_digit_search_does_not_change_text_search(api: tuple[TestClient, Settings, Path]) -> None:
+    client, settings, db_path = api
+    headers = _auth(settings)
+    _seed(
+        db_path,
+        [
+            _employee(id="a", employee_number="EMP-00051", email="a@acme.test", first_name="Ada"),
+            _employee(id="b", employee_number="EMP-00052", email="b@acme.test", first_name="Bea"),
+        ],
+    )
+    assert _ids(client, headers, q="Ada") == ["a"]
+    assert _ids(client, headers, q="Ada 51") == []
+    assert _ids(client, headers, q="999999999999999999999") == []
+
+
+def test_digit_search_applies_to_the_csv_export(api: tuple[TestClient, Settings, Path]) -> None:
+    client, settings, db_path = api
+    _seed(
+        db_path,
+        [
+            _employee(id="a", employee_number="EMP-00051", email="a@acme.test", first_name="Ada"),
+            _employee(id="b", employee_number="EMP-00052", email="b@acme.test", first_name="Bea"),
+        ],
+    )
+    response = client.get("/employees/export.csv", params={"q": "51"}, headers=_auth(settings))
+    assert response.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(response.text)))
+    assert [row["employee number"] for row in rows] == ["EMP-00051"]
