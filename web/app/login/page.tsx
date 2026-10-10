@@ -4,38 +4,38 @@ import { redirect } from "next/navigation";
 import { backendFetch } from "../../lib/api";
 import { SESSION_COOKIE } from "../../lib/session";
 import { LoginForm } from "./login-form";
+import styles from "./login.module.css";
+
+export const metadata = { title: "Sign in | CompPulse" };
 
 export default async function LoginPage() {
   await connection();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (token) {
+    let status: number | null = null;
     try {
-      const me = await backendFetch("/auth/me", token);
-      if (me.ok) {
-        redirect("/");
-      }
-      if (me.status === 401) {
-        redirect("/logout");
-      }
+      status = (await backendFetch("/auth/me", token)).status;
     } catch {
-      // Show the form when the backend cannot be reached.
+      status = null;
+    }
+    if (status !== null && status >= 200 && status < 300) {
+      redirect("/");
+    }
+    if (status === 401) {
+      redirect("/logout");
     }
   }
 
-  let healthPayload = "unavailable";
-  try {
-    const health = await backendFetch("/health");
-    healthPayload = await health.text();
-  } catch (error) {
-    healthPayload = error instanceof Error ? error.message : "unavailable";
-  }
-
   return (
-    <main>
-      <h1>CompPulse</h1>
-      <p>Backend health</p>
-      <pre dangerouslySetInnerHTML={{ __html: healthPayload.replace(/</g, "") }} />
-      <LoginForm />
+    <main className={styles.page}>
+      <div className={styles.card}>
+        <div className={styles.brand}>
+          <h1>CompPulse</h1>
+          <p>Salary management for HR</p>
+        </div>
+        <LoginForm />
+        <p className={styles.footer}>Salary data is confidential.</p>
+      </div>
     </main>
   );
 }
