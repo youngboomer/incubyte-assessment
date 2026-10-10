@@ -7,4 +7,7 @@ export const sessionCookieOptions = {
   sameSite: "lax" as const,
   path: "/",
   maxAge: SESSION_MAX_AGE_SECONDS,
+  secure: process.env.NODE_ENV === "production",
 };
+
+export const clearedSessionCookieOptions = { ...sessionCookieOptions, maxAge: 0 };

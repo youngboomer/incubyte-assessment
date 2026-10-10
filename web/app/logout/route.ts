@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, sessionCookieOptions } from "../../lib/session";
+import { SESSION_COOKIE, clearedSessionCookieOptions } from "../../lib/session";
 
 function clearSession(): NextResponse {
   // Relative Location keeps the browser on the public host. request.url is the
@@ -8,10 +8,7 @@ function clearSession(): NextResponse {
     status: 307,
     headers: { location: "/login" },
   });
-  response.cookies.set(SESSION_COOKIE, "", {
-    ...sessionCookieOptions,
-    maxAge: 0,
-  });
+  response.cookies.set(SESSION_COOKIE, "", clearedSessionCookieOptions);
   return response;
 }
 
