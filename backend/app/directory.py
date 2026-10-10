@@ -75,6 +75,20 @@ def _serializer(secret: str) -> URLSafeSerializer:
     return URLSafeSerializer(secret, salt=CURSOR_SALT)
 
 
+def sign_cursor(secret: str, payload: dict[str, Any]) -> str:
+    return _serializer(secret).dumps(payload)
+
+
+def load_cursor(secret: str, token: str) -> dict[str, Any]:
+    try:
+        payload = _serializer(secret).loads(token)
+    except BadData as exc:
+        raise InvalidCursor("Invalid cursor") from exc
+    if not isinstance(payload, dict):
+        raise InvalidCursor("Invalid cursor")
+    return payload
+
+
 def _sort_columns(sort: str) -> tuple[ColumnElement[Any], ...]:
     employee_id = Employee.id
     columns: dict[str, tuple[ColumnElement[Any], ...]] = {

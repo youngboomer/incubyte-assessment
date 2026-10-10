@@ -154,6 +154,49 @@ Currency comes from the country. Response is the employee object, `version_id` 1
 }
 ```
 
+## Audit feed
+
+`GET /audit` returns pay changes across all employees from `compensation_audit_logs`, newest first (`created_at` desc, then `id` desc). Requires the HR bearer token. Read-only.
+
+Query: `employee_id`, `department_id`, `since`, `until`, `changed_by`, `limit`, `cursor`.
+
+- `since`, `until`: ISO dates `YYYY-MM-DD`, inclusive, compared with `effective_date`. Invalid date or `since` after `until`: 422.
+- `changed_by`: exact match. `employee_id` and `department_id` match exactly; an unknown id returns an empty page.
+- `limit`: 1–100. Default 50.
+- `cursor`: opaque and signed. A malformed, foreign or tampered cursor: 422. Keep the same filters while paging.
+
+Each item has every field of the per-employee audit item above, plus `employee_id`, `employee_number`, `employee_name` (first and last name) and `department`.
+
+```json
+{
+  "items": [
+    {
+      "id": 10,
+      "employee_id": "6b1d1a4e-8c0a-4f0e-9c2a-1a2b3c4d5e6f",
+      "employee_number": "EMP-00001",
+      "employee_name": "Ada Okoye",
+      "department": { "id": 1, "name": "Engineering" },
+      "previous_base_salary_scaled": "15500000",
+      "new_base_salary_scaled": "16000000",
+      "previous_variable_pay_scaled": "0",
+      "new_variable_pay_scaled": "0",
+      "salary_scale": 2,
+      "currency_code": "USD",
+      "fx_units_per_usd_scaled": "1000000",
+      "fx_scale": 6,
+      "previous_salary_usd_scaled": "15500000",
+      "new_salary_usd_scaled": "16000000",
+      "salary_usd_scale": 2,
+      "reason": "Annual review",
+      "effective_date": "2026-04-01",
+      "changed_by": "hr@acme.test",
+      "created_at": "2026-04-01T09:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
 ## Compensation
 
 `PATCH /employees/{id}/compensation`
