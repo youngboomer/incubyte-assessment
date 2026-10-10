@@ -1,121 +1,45 @@
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.75rem 1rem;
-  margin: 1rem 0;
-}
-
-.filters label,
-.add label {
+.person {
   display: grid;
-  gap: 0.25rem;
-  min-width: 10rem;
+  gap: 2px;
+  min-width: 0;
 }
 
-.search {
-  flex: 1 1 16rem;
-  min-width: 16rem;
+.name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
 }
 
-.limit {
-  min-width: 6rem;
+.name:hover {
+  color: var(--teal-700);
+  text-decoration: underline;
 }
 
-.filters input,
-.filters select,
-.add input,
-.add select {
-  font: inherit;
-  padding: 0.35rem 0.5rem;
-}
-
-.download {
-  margin: 0.25rem 0 0.75rem;
-}
-
-.total {
-  margin: 0 0 0.75rem;
-}
-
-.wrap {
-  overflow-x: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  padding: 0.45rem 0.65rem;
-  border-bottom: 1px solid #d5dde3;
-  text-align: left;
-  vertical-align: top;
-}
-
-.table thead th {
-  background: #f3f6f8;
-  border-bottom: 2px solid #c5d0d8;
-}
-
-.table tbody tr:hover {
-  background: #f6f8f9;
-}
-
-.numeric {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.active {
-  font-weight: 700;
-}
-
-.pager {
-  display: flex;
-  gap: 1rem;
-  margin: 0.75rem 0 1.5rem;
-}
-
-.add {
-  display: grid;
-  gap: 0.75rem;
-  max-width: 28rem;
-  margin-top: 1.5rem;
-}
-
-.add h2 {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.hint {
-  color: #5c6b76;
-  font-size: 0.85rem;
+.number {
+  font-size: 12px;
   font-weight: 400;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
 }
 
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+@media (pointer: coarse) {
+  .name {
+    min-height: var(--tap);
+  }
 }
 
-.error {
-  color: #8a1f11;
-  margin: 0.75rem 0;
+.loadingBar {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.empty {
-  color: #5c6b76;
-  margin: 0.75rem 0;
+.loadingRows {
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
 }

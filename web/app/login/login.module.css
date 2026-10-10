@@ -1,0 +1,72 @@
+.page {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: var(--space-5) var(--gutter);
+}
+
+.card {
+  display: grid;
+  gap: var(--space-5);
+  width: min(100%, 400px);
+  padding: var(--space-6) clamp(var(--space-4), 6vw, var(--space-6));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.brand h1 {
+  margin: 0 0 var(--space-1);
+  font-size: 24px;
+  color: var(--teal-900);
+}
+
+.brand p {
+  color: var(--text-muted);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.passwordRow {
+  position: relative;
+}
+
+.toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-height: 20px;
+  padding: 0 var(--space-1);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--teal-700);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--teal-800);
+  text-decoration: underline;
+}
+
+.submit {
+  width: 100%;
+}
+
+.footer {
+  font-size: 12px;
+  color: var(--text-subtle);
+  text-align: center;
+}
+
+@media (pointer: coarse) {
+  .toggle {
+    min-height: var(--tap);
+    min-width: var(--tap);
+    top: -14px;
+  }
+}
