@@ -987,3 +987,27 @@ def test_search_finds_employee_by_pasted_email(api: tuple[TestClient, Settings, 
     )
     assert response.status_code == 200, response.text
     assert [item["id"] for item in response.json()["items"]] == ["hit"]
+
+
+def test_csv_neutralises_formula_cells(api: tuple[TestClient, Settings, Path]) -> None:
+    client, settings, db_path = api
+    _seed(
+        db_path,
+        [
+            _employee(
+                id="formula",
+                first_name='=HYPERLINK("http://x")',
+                last_name="Okoye",
+                job_title="+cmd",
+                email="formula@acme.test",
+                base_salary_scaled="-12000050",
+            )
+        ],
+    )
+    response = client.get("/employees/export.csv", headers=_auth(settings))
+    assert response.status_code == 200
+    (row,) = csv.DictReader(io.StringIO(response.text))
+    assert row["name"] == '\'=HYPERLINK("http://x") Okoye'
+    assert row["title"] == "'+cmd"
+    assert row["email"] == "formula@acme.test"
+    assert row["base major"] == "-120000.50"

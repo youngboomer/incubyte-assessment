@@ -47,6 +47,7 @@ _CSV_HEADERS = (
     "USD major",
     "status",
 )
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 _FTS = table("employees_fts", column("rowid"))
 
 
@@ -414,6 +415,10 @@ def _major_units(scaled: str, scale: int) -> str:
     return str(amount)
 
 
+def _csv_text(value: str) -> str:
+    return f"'{value}" if value.startswith(_CSV_FORMULA_PREFIXES) else value
+
+
 def _render_csv(rows: Sequence[Any]) -> str:
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
@@ -422,12 +427,12 @@ def _render_csv(rows: Sequence[Any]) -> str:
         scale = int(row.salary_scale)
         writer.writerow(
             [
-                row.employee_number,
-                f"{row.first_name} {row.last_name}",
-                row.email,
-                row.job_title,
-                row.department_name,
-                row.country_name,
+                _csv_text(row.employee_number),
+                _csv_text(f"{row.first_name} {row.last_name}"),
+                _csv_text(row.email),
+                _csv_text(row.job_title),
+                _csv_text(row.department_name),
+                _csv_text(row.country_name),
                 row.currency_code,
                 row.level,
                 _major_units(row.base_salary_scaled, scale),

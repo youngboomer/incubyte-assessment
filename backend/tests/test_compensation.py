@@ -783,7 +783,7 @@ def test_fx_unknown_code_and_invalid_rate(api: Api) -> None:
     )
     assert missing.status_code == 404, missing.text
     assert missing.json() == {"detail": "Currency not found"}
-    for bad in ("12.00", "1e5", "0", "-0", "", "1000000.0", "+1000000"):
+    for bad in ("12.00", "1e5", "0", "-0", "-5000000", "", "1000000.0", "+1000000"):
         response = api.client.patch(
             "/fx/USD",
             headers=api.headers(),
