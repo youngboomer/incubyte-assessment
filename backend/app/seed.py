@@ -2,10 +2,13 @@
 
 import argparse
 import asyncio
+import json
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
+from pathlib import Path
 from random import Random
 from typing import NamedTuple
 from uuid import UUID
@@ -22,6 +25,14 @@ _FX_SCALE = 6
 _INSERT_BATCH_SIZE = 1000
 _CURRENCY_UPDATED_AT = "2026-01-01T00:00:00Z"
 _TERMINATED_RATE = 0.04
+_NAME_ATTEMPTS = 50
+_FALLBACK = "SG"
+NAMES_BY_COUNTRY: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    country: (tuple(pool["given"]), tuple(pool["surname"]))
+    for country, pool in json.loads(
+        Path(__file__).with_name("names.json").read_text(encoding="utf-8")
+    ).items()
+}
 _HIRE_ORIGIN = date(2016, 1, 1)
 _HIRE_DAYS = (date(2025, 12, 31) - _HIRE_ORIGIN).days + 1
 # Major-unit payroll grid before scaling. JPY has no minor units.
@@ -98,74 +109,6 @@ LEVELS: tuple[LevelSpec, ...] = (
     LevelSpec("IC5", 10, 160_000, 215_000),
     LevelSpec("M1", 8, 190_000, 245_000),
     LevelSpec("M2", 4, 225_000, 280_000),
-)
-
-FIRST_NAMES: tuple[str, ...] = (
-    "Aarav",
-    "Aditi",
-    "Amelia",
-    "Ananya",
-    "Arjun",
-    "Benjamin",
-    "Chloe",
-    "Daniel",
-    "Diya",
-    "Emma",
-    "Ethan",
-    "Fatima",
-    "Gabriel",
-    "Hannah",
-    "Hiro",
-    "Ishaan",
-    "Jack",
-    "Kabir",
-    "Liam",
-    "Lucas",
-    "Maya",
-    "Mei",
-    "Noah",
-    "Nora",
-    "Olivia",
-    "Priya",
-    "Rahul",
-    "Sofia",
-    "Vihaan",
-    "William",
-    "Zara",
-    "Elena",
-)
-
-LAST_NAMES: tuple[str, ...] = (
-    "Anderson",
-    "Brown",
-    "Chen",
-    "Davis",
-    "Garcia",
-    "Gupta",
-    "Iyer",
-    "Johnson",
-    "Kapoor",
-    "Kim",
-    "Kumar",
-    "Lee",
-    "Martinez",
-    "Miller",
-    "Nair",
-    "Nguyen",
-    "Patel",
-    "Reddy",
-    "Rossi",
-    "Sato",
-    "Schmidt",
-    "Sharma",
-    "Singh",
-    "Smith",
-    "Tanaka",
-    "Taylor",
-    "Thomas",
-    "Walker",
-    "Wilson",
-    "Wright",
 )
 
 # Index matches LEVELS. Titles stay fixed so they do not draw extra randomness.
@@ -265,14 +208,34 @@ def generate_employees(count: int) -> list[SeedEmployee]:
     if count < 0:
         raise ValueError("count must be >= 0")
     rng = Random(42)
-    return [_one_employee(rng, number) for number in range(1, count + 1)]
+    used_handles: set[str] = set()
+    return [_one_employee(rng, number, used_handles) for number in range(1, count + 1)]
 
 
-def _one_employee(rng: Random, number: int) -> SeedEmployee:
+def _email_handle(first_name: str, last_name: str) -> str:
+    def fold(name: str) -> str:
+        ascii_only = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+        return "".join(char for char in ascii_only if char.isalnum() or char == "-").lower()
+
+    return f"{fold(first_name)}.{fold(last_name)}"
+
+
+def _pick_name(rng: Random, country_code: str, used_handles: set[str]) -> tuple[str, str, str]:
+    attempt = 0
+    while True:
+        given, surnames = NAMES_BY_COUNTRY[country_code if attempt < _NAME_ATTEMPTS else _FALLBACK]
+        first_name = rng.choice(given)
+        last_name = rng.choice(surnames)
+        handle = _email_handle(first_name, last_name)
+        if handle not in used_handles:
+            used_handles.add(handle)
+            return first_name, last_name, handle
+        attempt += 1
+
+
+def _one_employee(rng: Random, number: int, used_handles: set[str]) -> SeedEmployee:
     # Call order is part of the golden row. Do not reorder these draws.
     employee_id = str(UUID(int=rng.getrandbits(128)))
-    first_name = rng.choice(FIRST_NAMES)
-    last_name = rng.choice(LAST_NAMES)
     country = _pick_weighted(rng, COUNTRIES, _COUNTRY_WEIGHTS)
     department = _pick_weighted(rng, DEPARTMENTS, _DEPARTMENT_WEIGHTS)
     level = _pick_weighted(rng, LEVELS, _LEVEL_WEIGHTS)
@@ -285,6 +248,7 @@ def _one_employee(rng: Random, number: int) -> SeedEmployee:
     hired = _HIRE_ORIGIN + timedelta(days=rng.randrange(_HIRE_DAYS))
     hired_on = hired.isoformat()
     stamp = f"{hired_on}T00:00:00Z"
+    first_name, last_name, handle = _pick_name(rng, country.code, used_handles)
     currency = _CURRENCIES_BY_CODE[country.currency_code]
     base_scaled, variable_scaled, usd_scaled = _scaled_pay(
         usd_base,
@@ -297,7 +261,7 @@ def _one_employee(rng: Random, number: int) -> SeedEmployee:
         employee_number=f"EMP-{number:05d}",
         first_name=first_name,
         last_name=last_name,
-        email=f"{first_name}.{last_name}.{number}@acme.test".lower(),
+        email=f"{handle}@acme.test",
         job_title=_TITLE_LADDERS[department.name][_LEVEL_INDEX[level.name]],
         department_id=department.id,
         country_code=country.code,

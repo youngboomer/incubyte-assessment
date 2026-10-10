@@ -1,6 +1,7 @@
 import asyncio
 import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -10,20 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.db import SCHEMA_STATEMENTS, create_db_engine, init_schema
 from app.main import create_app
 from app.money import decimal_to_scaled, scaled_to_decimal
-from app.seed import apply_seed, generate_employees, main
+from app.seed import COUNTRIES, NAMES_BY_COUNTRY, apply_seed, generate_employees, main
 from app.settings import Settings
 
 # Pinned from Random(42). A change in draw order must fail this.
 _GOLDEN_EMP_00001 = (
     "bdd640fb-0667-1ad1-1c80-317fa3b1799d",
-    "kabir.johnson.1@acme.test",
-    "GB",
-    "United Kingdom",
+    "sinan.winter@acme.test",
+    "DE",
+    "Germany",
     "Engineering",
     "active",
-    "15350000",
+    "6550000",
     "0",
-    "19679487",
+    "7119565",
 )
 
 _CURRENCIES = (
@@ -127,8 +128,7 @@ def test_generate_employees_honors_count() -> None:
         "EMP-00005",
     ]
     for number, row in enumerate(rows, start=1):
-        assert row.email == f"{row.first_name}.{row.last_name}.{number}@acme.test".lower()
-        assert row.email == row.email.lower()
+        assert re.fullmatch(r"[a-z0-9-]+\.[a-z0-9-]+@acme\.test", row.email)
         assert row.comp_effective_date == row.hire_date
         assert row.created_at == f"{row.hire_date}T00:00:00Z"
         assert row.updated_at == row.created_at
@@ -136,6 +136,35 @@ def test_generate_employees_honors_count() -> None:
         assert _DIGITS.fullmatch(row.base_salary_scaled)
         assert _DIGITS.fullmatch(row.variable_pay_scaled)
         assert _DIGITS.fullmatch(row.salary_usd_scaled)
+
+
+def test_names_are_unique_and_emails_are_plain_ascii() -> None:
+    rows = generate_employees(10_000)
+    assert len({(row.first_name, row.last_name) for row in rows}) == 10_000
+    assert len({row.email for row in rows}) == 10_000
+    for row in rows:
+        assert re.fullmatch(r"[a-z0-9-]+\.[a-z0-9-]+@acme\.test", row.email), row.email
+
+
+def test_names_come_from_the_employees_country() -> None:
+    for row in generate_employees(2_000):
+        given, surnames = NAMES_BY_COUNTRY[row.country_code]
+        assert row.first_name in given
+        assert row.last_name in surnames
+
+
+def test_names_file_covers_every_seed_country_and_is_clean() -> None:
+    assert set(NAMES_BY_COUNTRY) == {country.code for country in COUNTRIES}
+    for code, (given, surnames) in NAMES_BY_COUNTRY.items():
+        for kind, names in (("given", given), ("surname", surnames)):
+            assert len(names) >= 50, (code, kind)
+            assert len(set(names)) == len(names), (code, kind)
+            for name in names:
+                assert name == name.strip() and name, (code, kind, name)
+                assert " " not in name, (code, kind, name)
+                decomposed = unicodedata.normalize("NFKD", name)
+                folded = "".join(char for char in decomposed if char.isascii())
+                assert any(char.isalpha() for char in folded), (code, kind, name)
 
 
 def test_cli_count_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -537,7 +566,7 @@ async def _assert_ten_thousand(conn: AsyncConnection) -> None:
 
     matched = (
         await conn.exec_driver_sql(
-            "SELECT employee_number FROM employees_fts WHERE employees_fts MATCH 'johnson'"
+            "SELECT employee_number FROM employees_fts WHERE employees_fts MATCH 'winter'"
         )
     ).all()
     assert any(row[0] == "EMP-00001" for row in matched)
