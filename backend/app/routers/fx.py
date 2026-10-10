@@ -32,8 +32,8 @@ class FxRatePatch(BaseModel):
     @classmethod
     def _rate(cls, value: str) -> str:
         rate = scaled_to_decimal(value, FX_SCALE)
-        if rate == 0:
-            raise ValueError("units_per_usd_scaled must be non-zero")
+        if rate <= 0:
+            raise ValueError("units_per_usd_scaled must be positive")
         return value
 
 

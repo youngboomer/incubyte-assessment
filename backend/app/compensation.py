@@ -4,18 +4,27 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select, text, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CompensationAuditLog, Country, Currency, Department, Employee
+from app.models import (
+    CompensationAuditLog,
+    Country,
+    Currency,
+    Department,
+    Employee,
+    EmployeeChangeLog,
+)
 from app.money import decimal_to_scaled, scaled_to_decimal
 
 FX_SCALE = 6
 USD_SCALE = 2
 LEVELS = frozenset({"IC1", "IC2", "IC3", "IC4", "IC5", "M1", "M2"})
 STATUSES = frozenset({"active", "terminated"})
+_NUMBER_ATTEMPTS = 10
+_NUMBER_TAKEN = "Employee number already exists"
 
 # RETURNING id is set only when the version predicate matches. The FTS trigger
 # also writes on this update, so changes() is not a reliable row count.
@@ -70,6 +79,22 @@ class NewEmployee:
 class CompensationChange:
     base_salary_scaled: str
     variable_pay_scaled: str
+    reason: str
+    effective_date: str
+    version_id: int
+
+
+@dataclass(frozen=True)
+class EmployeeEdit:
+    fields: Mapping[str, str | int]
+    reason: str
+    effective_date: str
+    version_id: int
+
+
+@dataclass(frozen=True)
+class StatusChange:
+    status: str
     reason: str
     effective_date: str
     version_id: int
@@ -184,6 +209,19 @@ def _audit_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _change_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "field": row["field"],
+        "previous_value": row["previous_value"],
+        "new_value": row["new_value"],
+        "reason": row["reason"],
+        "effective_date": row["effective_date"],
+        "changed_by": row["changed_by"],
+        "created_at": row["created_at"],
+    }
+
+
 def _currency_payload(
     code: str, name: str, minor_scale: int, units_per_usd_scaled: str
 ) -> dict[str, Any]:
@@ -212,12 +250,71 @@ async def _insert_audit(session: AsyncSession, values: dict[str, object]) -> Non
     await session.execute(insert(CompensationAuditLog).values(**values))
 
 
+_STALE_VERSION = "Record was modified. Reload and try again."
+
+
+async def _apply_employee_changes(
+    session: AsyncSession,
+    employee_id: str,
+    current: Mapping[str, Any],
+    new_values: Mapping[str, str | int],
+    version_id: int,
+    reason: str,
+    effective_date: str,
+    changed_by: str,
+) -> dict[str, Any] | NotFound | Conflict:
+    now = utc_timestamp()
+    try:
+        matched = (
+            await session.execute(
+                update(Employee)
+                .where(Employee.id == employee_id, Employee.version_id == version_id)
+                .values(**new_values, version_id=Employee.version_id + 1, updated_at=now)
+                .returning(Employee.id)
+            )
+        ).scalar_one_or_none()
+        if matched is None:
+            await session.rollback()
+            if await _fetch_employee(session, employee_id) is None:
+                return NotFound("Employee not found")
+            return Conflict(_STALE_VERSION)
+
+        await session.execute(
+            insert(EmployeeChangeLog),
+            [
+                {
+                    "employee_id": employee_id,
+                    "field": field,
+                    "previous_value": str(current[field]),
+                    "new_value": str(value),
+                    "reason": reason,
+                    "effective_date": effective_date,
+                    "changed_by": changed_by,
+                    "created_at": now,
+                }
+                for field, value in new_values.items()
+            ],
+        )
+        updated = await _fetch_employee(session, employee_id)
+        if updated is None:
+            await session.rollback()
+            return NotFound("Employee not found")
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        return _conflict_from_integrity(exc)
+    except Exception:
+        await session.rollback()
+        raise
+    return _employee_payload(updated)
+
+
 def _conflict_from_integrity(exc: IntegrityError) -> Conflict:
     message = str(exc.orig).lower()
     if "unique" not in message:
         raise exc
     if "employee_number" in message:
-        return Conflict("Employee number already exists")
+        return Conflict(_NUMBER_TAKEN)
     return Conflict("Email already exists")
 
 
@@ -273,40 +370,45 @@ async def create_employee(
 
     now = utc_timestamp()
     employee_id = str(uuid.uuid4())
-    employee_number = await _next_employee_number(session)
-    try:
-        await session.execute(
-            insert(Employee).values(
-                id=employee_id,
-                employee_number=employee_number,
-                first_name=new_employee.first_name,
-                last_name=new_employee.last_name,
-                email=new_employee.email,
-                job_title=new_employee.job_title,
-                department_id=new_employee.department_id,
-                country_code=new_employee.country_code,
-                currency_code=currency_code,
-                level=new_employee.level,
-                base_salary_scaled=new_employee.base_salary_scaled,
-                variable_pay_scaled=new_employee.variable_pay_scaled,
-                salary_usd_scaled=usd,
-                status=new_employee.status,
-                hire_date=new_employee.hire_date,
-                comp_effective_date=new_employee.comp_effective_date,
-                version_id=1,
-                created_at=now,
-                updated_at=now,
+    for attempt in range(_NUMBER_ATTEMPTS):
+        employee_number = await _next_employee_number(session)
+        try:
+            await session.execute(
+                insert(Employee).values(
+                    id=employee_id,
+                    employee_number=employee_number,
+                    first_name=new_employee.first_name,
+                    last_name=new_employee.last_name,
+                    email=new_employee.email,
+                    job_title=new_employee.job_title,
+                    department_id=new_employee.department_id,
+                    country_code=new_employee.country_code,
+                    currency_code=currency_code,
+                    level=new_employee.level,
+                    base_salary_scaled=new_employee.base_salary_scaled,
+                    variable_pay_scaled=new_employee.variable_pay_scaled,
+                    salary_usd_scaled=usd,
+                    status=new_employee.status,
+                    hire_date=new_employee.hire_date,
+                    comp_effective_date=new_employee.comp_effective_date,
+                    version_id=1,
+                    created_at=now,
+                    updated_at=now,
+                )
             )
-        )
-        created = await _fetch_employee(session, employee_id)
-        if created is None:
+            created = await _fetch_employee(session, employee_id)
+            if created is None:
+                await session.rollback()
+                return Unprocessable("Unknown department")
+            await session.commit()
+        except IntegrityError as exc:
             await session.rollback()
-            return Unprocessable("Unknown department")
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        return _conflict_from_integrity(exc)
-    return _employee_payload(created)
+            conflict = _conflict_from_integrity(exc)
+            if conflict.detail == _NUMBER_TAKEN and attempt + 1 < _NUMBER_ATTEMPTS:
+                continue
+            return conflict
+        return _employee_payload(created)
+    raise AssertionError("unreachable: the last attempt returns")
 
 
 async def update_compensation(
@@ -353,7 +455,7 @@ async def update_compensation(
             still = await _fetch_employee(session, employee_id)
             if still is None:
                 return NotFound("Employee not found")
-            return Conflict("Record was modified. Reload and try again.")
+            return Conflict(_STALE_VERSION)
 
         await _insert_audit(
             session,
@@ -383,6 +485,120 @@ async def update_compensation(
         await session.rollback()
         raise
     return _employee_payload(updated)
+
+
+async def update_employee(
+    session: AsyncSession,
+    employee_id: str,
+    edit: EmployeeEdit,
+    changed_by: str,
+) -> dict[str, Any] | NotFound | Conflict | Unprocessable:
+    if not edit.reason:
+        return Unprocessable("Reason is required")
+    if not edit.fields:
+        return Unprocessable("No fields to change")
+    if "level" in edit.fields and edit.fields["level"] not in LEVELS:
+        return Unprocessable("Invalid level")
+
+    current = await _fetch_employee(session, employee_id)
+    if current is None:
+        return NotFound("Employee not found")
+
+    if "department_id" in edit.fields:
+        department_id = (
+            await session.execute(
+                select(Department.id).where(Department.id == edit.fields["department_id"])
+            )
+        ).scalar_one_or_none()
+        if department_id is None:
+            return Unprocessable("Unknown department")
+
+    changed = {
+        field: value for field, value in edit.fields.items() if current[field] != value
+    }
+    if "email" in changed:
+        duplicate = (
+            await session.execute(
+                select(Employee.id).where(
+                    Employee.email == changed["email"], Employee.id != employee_id
+                )
+            )
+        ).first()
+        if duplicate is not None:
+            return Conflict("Email already exists")
+
+    if not changed:
+        if int(current["version_id"]) != edit.version_id:
+            return Conflict(_STALE_VERSION)
+        return _employee_payload(current)
+
+    return await _apply_employee_changes(
+        session,
+        employee_id,
+        current,
+        changed,
+        edit.version_id,
+        edit.reason,
+        edit.effective_date,
+        changed_by,
+    )
+
+
+async def change_status(
+    session: AsyncSession,
+    employee_id: str,
+    change: StatusChange,
+    changed_by: str,
+) -> dict[str, Any] | NotFound | Conflict | Unprocessable:
+    if not change.reason:
+        return Unprocessable("Reason is required")
+    if change.status not in STATUSES:
+        return Unprocessable("Invalid status")
+
+    current = await _fetch_employee(session, employee_id)
+    if current is None:
+        return NotFound("Employee not found")
+    if current["status"] == change.status:
+        return Conflict(f"Employee is already {change.status}")
+
+    return await _apply_employee_changes(
+        session,
+        employee_id,
+        current,
+        {"status": change.status},
+        change.version_id,
+        change.reason,
+        change.effective_date,
+        changed_by,
+    )
+
+
+async def list_changes(
+    session: AsyncSession, employee_id: str
+) -> dict[str, list[dict[str, Any]]] | NotFound:
+    exists = (
+        await session.execute(select(Employee.id).where(Employee.id == employee_id))
+    ).first()
+    if exists is None:
+        return NotFound("Employee not found")
+
+    rows = (
+        await session.execute(
+            select(
+                EmployeeChangeLog.id,
+                EmployeeChangeLog.field,
+                EmployeeChangeLog.previous_value,
+                EmployeeChangeLog.new_value,
+                EmployeeChangeLog.reason,
+                EmployeeChangeLog.effective_date,
+                EmployeeChangeLog.changed_by,
+                EmployeeChangeLog.created_at,
+            )
+            .where(EmployeeChangeLog.employee_id == employee_id)
+            .order_by(EmployeeChangeLog.created_at.desc(), EmployeeChangeLog.id.desc())
+        )
+    ).mappings().all()
+    return {"items": [_change_payload(row) for row in rows]}
 
 
 async def list_audit(

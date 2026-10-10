@@ -5,7 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.deps import require_hr
-from app.directory import InvalidCursor, export_employees_csv, get_employee, list_employees
+from app.directory import (
+    InvalidCursor,
+    InvalidFilter,
+    export_employees_csv,
+    get_employee,
+    list_employees,
+    parse_salary_usd_bound,
+)
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -20,6 +27,23 @@ _Sort = Literal[
     "hire_date",
 ]
 _Direction = Literal["asc", "desc"]
+_Level = Literal["IC1", "IC2", "IC3", "IC4", "IC5", "M1", "M2"]
+_Status = Literal["active", "terminated"]
+
+
+def _salary_range(
+    salary_usd_min: str | None, salary_usd_max: str | None
+) -> tuple[int | None, int | None]:
+    try:
+        low = parse_salary_usd_bound(salary_usd_min)
+        high = parse_salary_usd_bound(salary_usd_max)
+    except InvalidFilter as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if low is not None and high is not None and low > high:
+        raise HTTPException(
+            status_code=422, detail="invalid_salary_range: salary_usd_min exceeds salary_usd_max"
+        )
+    return low, high
 
 
 @router.get("")
@@ -29,7 +53,10 @@ async def read_employees(
     department_id: int | None = None,
     country: str | None = None,
     currency: str | None = None,
-    status: str | None = None,
+    status: _Status | None = None,
+    level: _Level | None = None,
+    salary_usd_min: str | None = None,
+    salary_usd_max: str | None = None,
     sort: _Sort = "name",
     direction: _Direction = "asc",
     limit: int = Query(default=50, ge=1, le=100),
@@ -37,6 +64,7 @@ async def read_employees(
     _: str = Depends(require_hr),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    low, high = _salary_range(salary_usd_min, salary_usd_max)
     try:
         return await list_employees(
             session,
@@ -46,6 +74,9 @@ async def read_employees(
             country=country,
             currency=currency,
             status=status,
+            level=level,
+            salary_usd_min=low,
+            salary_usd_max=high,
             sort=sort,
             direction=direction,
             limit=limit,
@@ -61,12 +92,16 @@ async def export_employees(
     department_id: int | None = None,
     country: str | None = None,
     currency: str | None = None,
-    status: str | None = None,
+    status: _Status | None = None,
+    level: _Level | None = None,
+    salary_usd_min: str | None = None,
+    salary_usd_max: str | None = None,
     sort: _Sort = "name",
     direction: _Direction = "asc",
     _: str = Depends(require_hr),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
+    low, high = _salary_range(salary_usd_min, salary_usd_max)
     body = await export_employees_csv(
         session,
         q=q,
@@ -74,6 +109,9 @@ async def export_employees(
         country=country,
         currency=currency,
         status=status,
+        level=level,
+        salary_usd_min=low,
+        salary_usd_max=high,
         sort=sort,
         direction=direction,
     )

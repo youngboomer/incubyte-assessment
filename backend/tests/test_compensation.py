@@ -1,6 +1,7 @@
 import sqlite3
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -258,6 +259,18 @@ def test_post_duplicate_employee_number_is_conflict(
     assert _query(api.db_path, "SELECT COUNT(*) FROM employees") == [(1,)]
 
 
+def test_concurrent_creates_all_succeed_with_distinct_numbers(api: Api) -> None:
+    def _post(index: int) -> int:
+        body = _body(email=f"race.{index}@acme.test")
+        return api.client.post("/employees", headers=api.headers(), json=body).status_code
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = list(pool.map(_post, range(8)))
+    assert statuses == [200] * 8
+    numbers = _query(api.db_path, "SELECT employee_number FROM employees")
+    assert len({number for (number,) in numbers}) == 8
+
+
 def test_post_unknown_department_or_country_is_422(api: Api) -> None:
     department = api.client.post(
         "/employees", headers=api.headers(), json=_body(department_id=99)
@@ -288,12 +301,28 @@ def test_post_unknown_department_or_country_is_422(api: Api) -> None:
         {"base_salary_scaled": "9223372036854775808"},
         {"currency_code": "EUR"},
         {"first_name": ""},
+        {"first_name": "   "},
+        {"job_title": "\t"},
+        {"email": "not-an-email"},
+        {"email": "a@b"},
+        {"email": "a b@acme.test"},
         {"bonus": "1"},
     ],
 )
 def test_post_rejects_invalid_body(api: Api, overrides: dict[str, object]) -> None:
     response = api.client.post("/employees", headers=api.headers(), json=_body(**overrides))
     assert response.status_code == 422, response.text
+
+
+def test_post_trims_surrounding_whitespace(api: Api) -> None:
+    response = api.client.post(
+        "/employees",
+        headers=api.headers(),
+        json=_body(first_name=" Ada ", email=" ada.trim@acme.test "),
+    )
+    assert response.status_code in (200, 201), response.text
+    assert response.json()["first_name"] == "Ada"
+    assert response.json()["email"] == "ada.trim@acme.test"
 
 
 def test_post_rejects_numeric_salary(api: Api) -> None:
@@ -336,10 +365,22 @@ def test_post_converts_jpy_after_summing_local_amounts(api: Api) -> None:
     assert gbp["salary_scale"] == 2
 
 
-def test_post_allows_negative_salary_digits(api: Api) -> None:
-    created = _create(api, base_salary_scaled="-10000", variable_pay_scaled="0")
-    assert created["base_salary_scaled"] == "-10000"
-    assert created["salary_usd_scaled"] == "-10000"
+@pytest.mark.parametrize("field", ["base_salary_scaled", "variable_pay_scaled"])
+def test_negative_pay_is_rejected(api: Api, field: str) -> None:
+    response = api.client.post(
+        "/employees", headers=api.headers(), json=_body(**{field: "-10000"})
+    )
+    assert response.status_code == 422, response.text
+    assert _query(api.db_path, "SELECT COUNT(*) FROM employees") == [(0,)]
+
+    created = _create(api)
+    change = api.client.patch(
+        f"/employees/{created['id']}/compensation",
+        headers=api.headers(),
+        json=_comp(**{field: "-10000"}),
+    )
+    assert change.status_code == 422, change.text
+    assert _query(api.db_path, "SELECT COUNT(*) FROM compensation_audit_logs") == [(0,)]
 
 
 def test_routes_require_hr_token(api: Api) -> None:
@@ -562,6 +603,7 @@ def test_jpy_audit_uses_currency_scale(api: Api) -> None:
     "payload",
     [
         {"reason": ""},
+        {"reason": "   "},
         {"base_salary_scaled": "12.00"},
         {"base_salary_scaled": "1e5"},
         {"note": "nope"},
@@ -783,7 +825,7 @@ def test_fx_unknown_code_and_invalid_rate(api: Api) -> None:
     )
     assert missing.status_code == 404, missing.text
     assert missing.json() == {"detail": "Currency not found"}
-    for bad in ("12.00", "1e5", "0", "-0", "", "1000000.0", "+1000000"):
+    for bad in ("12.00", "1e5", "0", "-0", "-5000000", "", "1000000.0", "+1000000"):
         response = api.client.patch(
             "/fx/USD",
             headers=api.headers(),

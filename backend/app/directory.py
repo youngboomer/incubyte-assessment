@@ -47,6 +47,7 @@ _CSV_HEADERS = (
     "USD major",
     "status",
 )
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 _FTS = table("employees_fts", column("rowid"))
 
 
@@ -54,8 +55,38 @@ class InvalidCursor(Exception):
     pass
 
 
+class InvalidFilter(Exception):
+    pass
+
+
+def parse_salary_usd_bound(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        if not (value.isascii() and value.isdigit()):
+            raise ValueError(value)
+        scaled_to_decimal(value, 0)
+    except ValueError as exc:
+        raise InvalidFilter("invalid_salary_bound: expected non-negative int64 digits") from exc
+    return int(value)
+
+
 def _serializer(secret: str) -> URLSafeSerializer:
     return URLSafeSerializer(secret, salt=CURSOR_SALT)
+
+
+def sign_cursor(secret: str, payload: dict[str, Any]) -> str:
+    return _serializer(secret).dumps(payload)
+
+
+def load_cursor(secret: str, token: str) -> dict[str, Any]:
+    try:
+        payload = _serializer(secret).loads(token)
+    except BadData as exc:
+        raise InvalidCursor("Invalid cursor") from exc
+    if not isinstance(payload, dict):
+        raise InvalidCursor("Invalid cursor")
+    return payload
 
 
 def _sort_columns(sort: str) -> tuple[ColumnElement[Any], ...]:
@@ -177,6 +208,9 @@ def _apply_filters(
     country: str | None,
     currency: str | None,
     status: str | None,
+    level: str | None = None,
+    salary_usd_min: int | None = None,
+    salary_usd_max: int | None = None,
 ) -> Select[Any]:
     clauses: list[ColumnElement[bool]] = []
     if department_id is not None:
@@ -187,6 +221,12 @@ def _apply_filters(
         clauses.append(Employee.currency_code == currency)
     if status:
         clauses.append(Employee.status == status)
+    if level:
+        clauses.append(Employee.level == level)
+    if salary_usd_min is not None:
+        clauses.append(cast(Employee.salary_usd_scaled, Integer) >= salary_usd_min)
+    if salary_usd_max is not None:
+        clauses.append(cast(Employee.salary_usd_scaled, Integer) <= salary_usd_max)
     if q:
         match_query = sanitize_fts_query(q)
         if match_query is not None:
@@ -289,6 +329,9 @@ async def _count(
     country: str | None,
     currency: str | None,
     status: str | None,
+    level: str | None,
+    salary_usd_min: int | None,
+    salary_usd_max: int | None,
 ) -> int:
     stmt = _apply_filters(
         select(func.count()).select_from(Employee),
@@ -297,6 +340,9 @@ async def _count(
         country=country,
         currency=currency,
         status=status,
+        level=level,
+        salary_usd_min=salary_usd_min,
+        salary_usd_max=salary_usd_max,
     )
     return int((await session.execute(stmt)).scalar_one())
 
@@ -313,6 +359,9 @@ async def _exists_beyond(
     country: str | None,
     currency: str | None,
     status: str | None,
+    level: str | None,
+    salary_usd_min: int | None,
+    salary_usd_max: int | None,
 ) -> bool:
     columns = _sort_columns(sort)
     stmt = _apply_filters(
@@ -322,6 +371,9 @@ async def _exists_beyond(
         country=country,
         currency=currency,
         status=status,
+        level=level,
+        salary_usd_min=salary_usd_min,
+        salary_usd_max=salary_usd_max,
     )
     stmt = stmt.where(
         _seek_predicate(columns, sort, _boundary_values(sort, row), row.id, direction, side)
@@ -338,6 +390,9 @@ async def list_employees(
     country: str | None,
     currency: str | None,
     status: str | None,
+    level: str | None,
+    salary_usd_min: int | None,
+    salary_usd_max: int | None,
     sort: str,
     direction: str,
     limit: int,
@@ -354,6 +409,9 @@ async def list_employees(
         "country": country,
         "currency": currency,
         "status": status,
+        "level": level,
+        "salary_usd_min": salary_usd_min,
+        "salary_usd_max": salary_usd_max,
     }
     stmt = _apply_filters(_base_select(), **filters)
     if payload is not None:
@@ -414,6 +472,10 @@ def _major_units(scaled: str, scale: int) -> str:
     return str(amount)
 
 
+def _csv_text(value: str) -> str:
+    return f"'{value}" if value.startswith(_CSV_FORMULA_PREFIXES) else value
+
+
 def _render_csv(rows: Sequence[Any]) -> str:
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
@@ -422,12 +484,12 @@ def _render_csv(rows: Sequence[Any]) -> str:
         scale = int(row.salary_scale)
         writer.writerow(
             [
-                row.employee_number,
-                f"{row.first_name} {row.last_name}",
-                row.email,
-                row.job_title,
-                row.department_name,
-                row.country_name,
+                _csv_text(row.employee_number),
+                _csv_text(f"{row.first_name} {row.last_name}"),
+                _csv_text(row.email),
+                _csv_text(row.job_title),
+                _csv_text(row.department_name),
+                _csv_text(row.country_name),
                 row.currency_code,
                 row.level,
                 _major_units(row.base_salary_scaled, scale),
@@ -447,6 +509,9 @@ async def export_employees_csv(
     country: str | None,
     currency: str | None,
     status: str | None,
+    level: str | None,
+    salary_usd_min: int | None,
+    salary_usd_max: int | None,
     sort: str,
     direction: str,
 ) -> str:
@@ -457,6 +522,9 @@ async def export_employees_csv(
         country=country,
         currency=currency,
         status=status,
+        level=level,
+        salary_usd_min=salary_usd_min,
+        salary_usd_max=salary_usd_max,
     )
     stmt = stmt.order_by(*_order_by(_sort_columns(sort), direction, reverse=False))
     rows = (await session.execute(stmt)).all()
