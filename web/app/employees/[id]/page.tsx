@@ -42,7 +42,12 @@ export default async function EmployeePage({ params, searchParams }: PageProps) 
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const token = await requireToken();
   const tab: HistoryTab = first(query["tab"]) === "details" ? "details" : "pay";
-  const saved = SAVED_MESSAGES[first(query["saved"]) ?? ""];
+  const added = first(query["added"]);
+  const saved =
+    SAVED_MESSAGES[first(query["saved"]) ?? ""] ??
+    (added && /^EMP-\d+$/.test(added)
+      ? `Added ${added}. Employee number assigned automatically.`
+      : undefined);
 
   const [employeeResult, auditResult, changesResult, referenceResult] = await Promise.all([
     getEmployee(token, id).then(guard),
