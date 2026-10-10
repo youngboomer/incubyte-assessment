@@ -149,6 +149,54 @@ Currency comes from the country. Response is the employee object, `version_id` 1
 }
 ```
 
+`PATCH /employees/{id}`
+
+```json
+{
+  "job_title": "Staff Engineer",
+  "department_id": 2,
+  "reason": "Promotion",
+  "effective_date": "2026-05-01",
+  "version_id": 1
+}
+```
+
+Optional fields: `first_name`, `last_name`, `email`, `job_title`, `department_id`, `level`. At least one is required, and none may be null. Strings are trimmed and must not be empty, `email` must look like an email, `level` must be a known level. Country and currency cannot be changed, and any other field is rejected with 422. `reason` (non-blank), `effective_date` and `version_id` are required. Success returns the employee object with `version_id` incremented and writes one change-log row per field whose value actually changed. If nothing changed, nothing is written and `version_id` stays the same (a stale `version_id` is still 409). Stale `version_id`: 409 `{ "detail": "Record was modified. Reload and try again." }`, nothing written. Duplicate email: 409. Unknown department: 422. Missing id: 404.
+
+`POST /employees/{id}/status`
+
+```json
+{
+  "status": "terminated",
+  "reason": "Resigned",
+  "effective_date": "2026-06-30",
+  "version_id": 2
+}
+```
+
+`status` is `active` or `terminated`. `reason` is required and non-blank. Success returns the employee object with `version_id` incremented and one change-log row with `field` `status`. Setting the status the employee already has: 409 `{ "detail": "Employee is already terminated" }`. Stale `version_id`: 409, nothing written. Missing id: 404. Terminated employees drop out of the analytics active set.
+
+`GET /employees/{id}/changes` returns the change log newest first. Rows are append-only. `previous_value` and `new_value` are text. `department_id` changes log department ids.
+
+```json
+{
+  "items": [
+    {
+      "id": 4,
+      "field": "status",
+      "previous_value": "active",
+      "new_value": "terminated",
+      "reason": "Resigned",
+      "effective_date": "2026-06-30",
+      "changed_by": "hr@acme.test",
+      "created_at": "2026-06-30T09:00:00Z"
+    }
+  ]
+}
+```
+
+Missing id: 404.
+
 ## Compensation
 
 `PATCH /employees/{id}/compensation`
@@ -230,5 +278,5 @@ Scale is 6. The handler recomputes `salary_usd_scaled` for every employee on tha
 | --- | --- |
 | 401 | Missing or bad token, or bad login |
 | 404 | Employee or currency not found |
-| 409 | Stale `version_id`, or duplicate email |
+| 409 | Stale `version_id`, duplicate email, or setting the status an employee already has |
 | 422 | Validation, bad cursor, bad sort, money that is not a digit string |

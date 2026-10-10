@@ -1,9 +1,10 @@
 import re
 from datetime import date
+from typing import Self
 
 from fastapi import Depends, HTTPException
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.routing import Match
 from starlette.types import Scope
@@ -13,18 +14,24 @@ from app.compensation import (
     STATUSES,
     CompensationChange,
     Conflict,
+    EmployeeEdit,
     NewEmployee,
     NotFound,
+    StatusChange,
     Unprocessable,
+    change_status,
     create_employee,
     list_audit,
+    list_changes,
     update_compensation,
+    update_employee,
 )
 from app.db import get_session
 from app.deps import require_hr
 from app.money import scaled_to_decimal
 from app.routers.employees import router
 
+_EDITABLE_FIELDS = ("first_name", "last_name", "email", "job_title", "department_id", "level")
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
@@ -132,6 +139,76 @@ class CompensationPatch(BaseModel):
         return _stripped(value)
 
 
+class EmployeePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    job_title: str | None = None
+    department_id: int | None = None
+    level: str | None = None
+    reason: str
+    effective_date: date
+    version_id: int
+
+    @model_validator(mode="after")
+    def _has_a_field(self) -> Self:
+        provided = self.model_fields_set.intersection(_EDITABLE_FIELDS)
+        if not provided:
+            raise ValueError("at least one field to change is required")
+        if any(getattr(self, name) is None for name in provided):
+            raise ValueError("fields must not be null")
+        return self
+
+    @field_validator("first_name", "last_name", "email", "job_title", "reason")
+    @classmethod
+    def _non_empty(cls, value: str | None) -> str | None:
+        return None if value is None else _stripped(value)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str | None) -> str | None:
+        if value is not None and _EMAIL_RE.fullmatch(value) is None:
+            raise ValueError("must be an email address")
+        return value
+
+    @field_validator("level")
+    @classmethod
+    def _level(cls, value: str | None) -> str | None:
+        if value is not None and value not in LEVELS:
+            raise ValueError("invalid level")
+        return value
+
+    def changes(self) -> dict[str, str | int]:
+        return {
+            name: getattr(self, name)
+            for name in _EDITABLE_FIELDS
+            if name in self.model_fields_set
+        }
+
+
+class StatusPost(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    reason: str
+    effective_date: date
+    version_id: int
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        return _stripped(value)
+
+    @field_validator("status")
+    @classmethod
+    def _status(cls, value: str) -> str:
+        if value not in STATUSES:
+            raise ValueError("invalid status")
+        return value
+
+
 async def post_employee(
     body: EmployeeCreate,
     session: AsyncSession = Depends(get_session),
@@ -191,5 +268,60 @@ async def get_audit(
     _actor: str = Depends(require_hr),
 ) -> dict[str, object]:
     result = await list_audit(session, employee_id)
+    _raise_for_result(result)
+    return result
+
+
+@router.patch("/{employee_id}")
+async def patch_employee(
+    employee_id: str,
+    body: EmployeePatch,
+    session: AsyncSession = Depends(get_session),
+    changed_by: str = Depends(require_hr),
+) -> dict[str, object]:
+    result = await update_employee(
+        session,
+        employee_id,
+        EmployeeEdit(
+            fields=body.changes(),
+            reason=body.reason,
+            effective_date=body.effective_date.isoformat(),
+            version_id=body.version_id,
+        ),
+        changed_by,
+    )
+    _raise_for_result(result)
+    return result
+
+
+@router.post("/{employee_id}/status")
+async def post_status(
+    employee_id: str,
+    body: StatusPost,
+    session: AsyncSession = Depends(get_session),
+    changed_by: str = Depends(require_hr),
+) -> dict[str, object]:
+    result = await change_status(
+        session,
+        employee_id,
+        StatusChange(
+            status=body.status,
+            reason=body.reason,
+            effective_date=body.effective_date.isoformat(),
+            version_id=body.version_id,
+        ),
+        changed_by,
+    )
+    _raise_for_result(result)
+    return result
+
+
+@router.get("/{employee_id}/changes")
+async def get_changes(
+    employee_id: str,
+    session: AsyncSession = Depends(get_session),
+    _actor: str = Depends(require_hr),
+) -> dict[str, object]:
+    result = await list_changes(session, employee_id)
     _raise_for_result(result)
     return result
