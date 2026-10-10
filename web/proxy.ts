@@ -1,27 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { decideProxy } from "./proxy-rules";
 import { SESSION_COOKIE } from "./lib/session";
 
 export function proxy(request: NextRequest) {
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
-  const { pathname } = request.nextUrl;
-
-  const needsLogin =
-    pathname === "/" ||
-    pathname.startsWith("/employees") ||
-    pathname.startsWith("/settings");
-  if (pathname === "/" && !token) {
-    // Serve the login document at the published URL. A 307 body is only the
-    // path, so the health payload would not be in this response.
-    return NextResponse.rewrite(new URL("/login", request.url));
-  }
-  if (needsLogin && !token) {
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-  if (pathname === "/login" && token) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-  return NextResponse.next();
+  const hasToken = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const decision = decideProxy(request.nextUrl.pathname, hasToken);
+  if (decision === "next") return NextResponse.next();
+  if ("rewrite" in decision) return NextResponse.rewrite(new URL(decision.rewrite, request.url));
+  return NextResponse.redirect(new URL(decision.redirect, request.url));
 }
 
 export const config = {
