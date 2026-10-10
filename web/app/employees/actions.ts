@@ -1,159 +1,153 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { connection } from "next/server";
 import { redirect } from "next/navigation";
-import { backendFetch } from "../../lib/api";
+import { createEmployee, reference } from "../../lib/endpoints";
+import { describeFailure } from "../../lib/errors";
 import { majorToScaled } from "../../lib/format";
 import { SESSION_COOKIE } from "../../lib/session";
-import type { Employee, Reference } from "../../lib/types";
+import type { CreateEmployeeRequest, EmployeeStatus, Level } from "../../lib/types";
 
 export type AddEmployeeState = {
-  error: string;
+  values: Record<string, string>;
+  fieldErrors: Record<string, string>;
+  formError: string | null;
+  attempt: number;
 };
 
-const EMAIL_IN_USE = "That email is already in use.";
-const CHECK_FORM = "Check the form and try again.";
+const TEXT_FIELDS = [
+  "first_name",
+  "last_name",
+  "email",
+  "job_title",
+  "department_id",
+  "level",
+  "status",
+  "country_code",
+  "base_salary",
+  "variable_pay",
+  "hire_date",
+  "comp_effective_date",
+] as const;
+
+const REQUIRED_TEXT: Record<string, string> = {
+  first_name: "Enter a first name.",
+  last_name: "Enter a last name.",
+  email: "Enter a valid email address.",
+  job_title: "Enter a job title.",
+  department_id: "Choose a department.",
+  level: "Choose a level.",
+  status: "Choose a status.",
+  country_code: "Choose a country.",
+  base_salary: "Enter a valid base salary.",
+  hire_date: "Enter a valid hire date.",
+  comp_effective_date: "Enter a valid effective date.",
+};
+
+const PAY_FIELD_FOR: Record<string, string> = {
+  base_salary_scaled: "base_salary",
+  variable_pay_scaled: "variable_pay",
+};
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function addEmployeeAction(
-  _state: AddEmployeeState,
+  state: AddEmployeeState,
   formData: FormData,
 ): Promise<AddEmployeeState> {
-  await connection();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) {
     redirect("/login");
   }
 
-  const first_name = field(formData, "first_name");
-  const last_name = field(formData, "last_name");
-  const email = field(formData, "email");
-  const job_title = field(formData, "job_title");
-  const departmentRaw = field(formData, "department_id");
-  const country_code = field(formData, "country_code");
-  const level = field(formData, "level");
-  const status = field(formData, "status");
-  const hire_date = field(formData, "hire_date");
-  const comp_effective_date = field(formData, "comp_effective_date");
-  const baseMajor = field(formData, "base_salary");
-  const variableRaw = field(formData, "variable_pay");
-  const variableMajor = variableRaw === "" ? "0" : variableRaw;
+  const values: Record<string, string> = {};
+  for (const name of TEXT_FIELDS) {
+    const raw = formData.get(name);
+    values[name] = typeof raw === "string" ? raw.trim() : "";
+  }
+  const fail = (fieldErrors: Record<string, string>, formError: string | null): AddEmployeeState => ({
+    values,
+    fieldErrors,
+    formError,
+    attempt: state.attempt + 1,
+  });
 
-  if (
-    !first_name ||
-    !last_name ||
-    !email ||
-    !job_title ||
-    !/^\d+$/.test(departmentRaw) ||
-    !country_code ||
-    !level ||
-    !status ||
-    !isIsoDate(hire_date) ||
-    !isIsoDate(comp_effective_date) ||
-    !baseMajor
-  ) {
-    return { error: CHECK_FORM };
+  const fieldErrors: Record<string, string> = {};
+  for (const [name, message] of Object.entries(REQUIRED_TEXT)) {
+    if (values[name] === "") {
+      fieldErrors[name] = message;
+    }
+  }
+  for (const name of ["hire_date", "comp_effective_date"]) {
+    if (values[name] !== "" && !ISO_DATE.test(values[name] ?? "")) {
+      fieldErrors[name] = REQUIRED_TEXT[name] ?? "";
+    }
+  }
+  if (values["department_id"] !== "" && !/^\d+$/.test(values["department_id"] ?? "")) {
+    fieldErrors["department_id"] = REQUIRED_TEXT["department_id"] ?? "";
   }
 
-  const minorScale = await countryMinorScale(token, country_code);
-  if (minorScale === null) {
-    return { error: CHECK_FORM };
+  const ref = await reference(token);
+  if (!ref.ok) {
+    if (ref.code === "unauthorized") {
+      redirect("/logout");
+    }
+    return fail(fieldErrors, ref.message);
+  }
+  const country = ref.data.countries.find((item) => item.code === values["country_code"]);
+  const currency = ref.data.currencies.find((item) => item.code === country?.currency_code);
+  if (values["country_code"] !== "" && !currency) {
+    fieldErrors["country_code"] = REQUIRED_TEXT["country_code"] ?? "";
   }
 
-  const base_salary_scaled = majorToScaled(baseMajor, minorScale);
-  const variable_pay_scaled = majorToScaled(variableMajor, minorScale);
-  if (base_salary_scaled === null || variable_pay_scaled === null) {
-    return { error: CHECK_FORM };
+  const payText = (value: string | undefined) => (value ?? "").replace(/,/g, "");
+  const base = currency ? majorToScaled(payText(values["base_salary"]), currency.minor_scale) : null;
+  const variable = currency
+    ? majorToScaled(payText(values["variable_pay"]) || "0", currency.minor_scale)
+    : null;
+  if (currency && values["base_salary"] !== "" && (base === null || base.startsWith("-"))) {
+    fieldErrors["base_salary"] =
+      base === null ? "Enter a valid base salary." : "Pay cannot be negative.";
+  }
+  if (currency && (variable === null || variable.startsWith("-"))) {
+    fieldErrors["variable_pay"] =
+      variable === null ? "Enter a valid variable pay amount." : "Pay cannot be negative.";
   }
 
-  const payload = {
-    first_name,
-    last_name,
-    email,
-    job_title,
-    department_id: Number(departmentRaw),
-    country_code,
-    level,
-    base_salary_scaled,
-    variable_pay_scaled,
-    status,
-    hire_date,
-    comp_effective_date,
+  if (Object.keys(fieldErrors).length > 0 || base === null || variable === null) {
+    return fail(fieldErrors, "Check the highlighted fields and try again.");
+  }
+
+  const body: CreateEmployeeRequest = {
+    first_name: values["first_name"] ?? "",
+    last_name: values["last_name"] ?? "",
+    email: values["email"] ?? "",
+    job_title: values["job_title"] ?? "",
+    department_id: Number(values["department_id"]),
+    country_code: values["country_code"] ?? "",
+    level: (values["level"] ?? "") as Level,
+    status: (values["status"] ?? "") as EmployeeStatus,
+    base_salary_scaled: base,
+    variable_pay_scaled: variable,
+    hire_date: values["hire_date"] ?? "",
+    comp_effective_date: values["comp_effective_date"] ?? "",
   };
 
-  let response: Response;
-  try {
-    response = await backendFetch("/employees", token, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    return { error: CHECK_FORM };
-  }
-
-  if (response.status === 401) {
-    redirect("/logout");
-  }
-  if (response.status === 409) {
-    return { error: EMAIL_IN_USE };
-  }
-  if (response.status === 422) {
-    return { error: CHECK_FORM };
-  }
-  if (!response.ok) {
-    return { error: `Could not add employee. ${response.status}` };
-  }
-
-  let created: Employee;
-  try {
-    created = (await response.json()) as Employee;
-  } catch {
-    return { error: CHECK_FORM };
-  }
-  if (typeof created.id !== "string" || !/^[A-Za-z0-9_-]+$/.test(created.id)) {
-    return { error: CHECK_FORM };
-  }
-  redirect(`/employees/${created.id}`);
-}
-
-function field(formData: FormData, name: string): string {
-  const value = formData.get(name);
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-// Scale follows the selected country's currency on the reference payload.
-async function countryMinorScale(token: string, countryCode: string): Promise<number | null> {
-  let response: Response;
-  try {
-    response = await backendFetch("/reference", token);
-  } catch {
-    return null;
-  }
-  if (response.status === 401) {
-    redirect("/logout");
-  }
-  if (!response.ok) {
-    return null;
-  }
-  try {
-    const body = (await response.json()) as Reference;
-    const countries = Array.isArray(body.countries) ? body.countries : [];
-    const currencies = Array.isArray(body.currencies) ? body.currencies : [];
-    const country = countries.find((item) => item.code === countryCode);
-    if (!country) {
-      return null;
+  const created = await createEmployee(token, body);
+  if (!created.ok) {
+    if (created.code === "unauthorized") {
+      redirect("/logout");
     }
-    const currency = currencies.find((item) => item.code === country.currency_code);
-    if (!currency || !Number.isInteger(currency.minor_scale) || currency.minor_scale < 0) {
-      return null;
+    if (created.code === "duplicate_email") {
+      return fail({ email: created.message }, null);
     }
-    return currency.minor_scale;
-  } catch {
-    return null;
+    const view = describeFailure(created);
+    const mapped: Record<string, string> = {};
+    for (const [name, message] of Object.entries(view.fieldErrors)) {
+      mapped[PAY_FIELD_FOR[name] ?? name] = message;
+    }
+    return fail(mapped, view.formError);
   }
+
+  redirect(`/employees/${encodeURIComponent(created.data.id)}?added=${encodeURIComponent(created.data.employee_number)}`);
 }

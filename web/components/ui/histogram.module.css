@@ -1,0 +1,60 @@
+.figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.plot {
+  display: flex;
+  align-items: stretch;
+  gap: clamp(2px, 0.6vw, 8px);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.column {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 28px;
+}
+
+.count {
+  font-size: 12px;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.slot {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: clamp(120px, 22vw, 200px);
+  border-bottom: 1px solid var(--border-input);
+}
+
+.bar,
+.peak {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+}
+
+.bar {
+  background: color-mix(in srgb, var(--teal-700) 55%, #fff);
+}
+
+.peak {
+  background: var(--teal-800);
+}
+
+.label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}

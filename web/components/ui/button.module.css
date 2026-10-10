@@ -1,0 +1,93 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: auto;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.md {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  font-size: 14px;
+}
+
+.sm {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+}
+
+@media (pointer: coarse) {
+  .md,
+  .sm {
+    min-height: var(--tap);
+  }
+}
+
+.primary {
+  background: var(--teal-700);
+  color: #fff;
+}
+
+.primary:hover {
+  background: var(--teal-800);
+  color: #fff;
+}
+
+.primary:active {
+  background: var(--teal-900);
+}
+
+.quiet {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-input);
+}
+
+.quiet:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.danger {
+  background: var(--surface);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+}
+
+.danger:hover {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
