@@ -62,6 +62,7 @@ describe("requests", () => {
     ["listEmployeeAudit", () => endpoints.listEmployeeAudit("t", "e1"), "/employees/e1/audit", "GET"],
     ["getOverview", () => endpoints.getOverview("t", { level: "M1" }), "/analytics/overview?level=M1", "GET"],
     ["getAuditFeed", () => endpoints.getAuditFeed("t", { since: "2026-01-01" }, "cur"), "/audit?since=2026-01-01&cursor=cur", "GET"],
+    ["getChangesFeed", () => endpoints.getChangesFeed("t", { field: "status", since: "2026-01-01" }, "cur"), "/changes?field=status&since=2026-01-01&cursor=cur", "GET"],
     ["listRates", () => endpoints.listRates("t"), "/fx", "GET"],
     ["reference", () => endpoints.reference("t"), "/reference", "GET"],
     ["me", () => endpoints.me("t"), "/auth/me", "GET"],
@@ -71,6 +72,23 @@ describe("requests", () => {
     await run();
     expect(backendFetch.mock.calls[0]?.[0]).toBe(path);
     expect(backendFetch.mock.calls[0]?.[2]?.method).toBe(method);
+  });
+});
+
+describe("changes feed", () => {
+  test("returns the page and sends the token", async () => {
+    const page = { items: [], next_cursor: "n" };
+    backendFetch.mockResolvedValue(json(page));
+    const result = await endpoints.getChangesFeed("tok", { department_id: "2" });
+    expect(result).toMatchObject({ ok: true, data: page });
+    expect(backendFetch).toHaveBeenCalledWith("/changes?department_id=2", "tok", { method: "GET" });
+  });
+
+  test("401 and 422 are failures, not throws", async () => {
+    backendFetch.mockResolvedValue(json({ detail: "nope" }, 401));
+    expect(await endpoints.getChangesFeed("t")).toMatchObject({ ok: false, status: 401 });
+    backendFetch.mockResolvedValue(json({ detail: [] }, 422));
+    expect(await endpoints.getChangesFeed("t", {}, "bad")).toMatchObject({ ok: false, status: 422 });
   });
 });
 

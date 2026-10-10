@@ -17,7 +17,8 @@ import {
   Th,
 } from "../../components/ui";
 import { describeFailure } from "../../lib/errors";
-import { getAuditFeed, reference } from "../../lib/endpoints";
+import { describeChange } from "../../lib/change-words";
+import { getAuditFeed, getChangesFeed, reference } from "../../lib/endpoints";
 import {
   formatDate,
   formatLocalMoney,
@@ -25,10 +26,26 @@ import {
   formatUsd,
   pctChange,
 } from "../../lib/format";
-import { auditQuery, parseAuditFilters, type SearchParams } from "../../lib/query";
+import {
+  historyHref,
+  parseAuditFilters,
+  parseChangesFilters,
+  parseHistoryTab,
+  type SearchParams,
+} from "../../lib/query";
 import { SESSION_COOKIE } from "../../lib/session";
-import type { AuditFeedItem } from "../../lib/types";
+import type { AuditFeedItem, ChangeFeedItem } from "../../lib/types";
 import styles from "./history.module.css";
+
+const FIELD_OPTIONS = [
+  ["first_name", "First name"],
+  ["last_name", "Last name"],
+  ["email", "Email"],
+  ["job_title", "Job title"],
+  ["department_id", "Department"],
+  ["level", "Level"],
+  ["status", "Status"],
+] as const;
 
 export const metadata: Metadata = { title: "Change history – CompPulse" };
 
@@ -62,6 +79,90 @@ function Change({ item }: { item: AuditFeedItem }) {
   );
 }
 
+function PayTable({ items }: { items: AuditFeedItem[] }) {
+  return (
+    <DataTable caption="Pay changes, newest first">
+      <thead>
+        <tr>
+          <Th>Effective</Th>
+          <Th>Employee</Th>
+          <Th>Change</Th>
+          <Th>Reason</Th>
+          <Th>Changed by</Th>
+          <Th numeric>US dollars at the time</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr key={item.id}>
+            <Td label="Effective" primary className={styles.nowrap}>
+              {formatDate(item.effective_date)}
+            </Td>
+            <Td label="Employee">
+              <span className={styles.employee}>
+                <Link href={`/employees/${encodeURIComponent(item.employee_id)}`}>
+                  {item.employee_name}
+                </Link>
+                <span className={styles.sub}>
+                  {item.employee_number} · {item.department.name}
+                </span>
+              </span>
+            </Td>
+            <Td label="Change" className={styles.words}>
+              <Change item={item} />
+            </Td>
+            <Td label="Reason" className={styles.words}>{item.reason}</Td>
+            <Td label="Changed by" className={styles.words}>{item.changed_by}</Td>
+            <Td label="US dollars" numeric className={styles.nowrap}>
+              {formatUsd(item.new_salary_usd_scaled, item.salary_usd_scale)}
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </DataTable>
+  );
+}
+
+function DetailsTable({ items }: { items: ChangeFeedItem[] }) {
+  return (
+    <DataTable caption="Detail changes, newest first">
+      <thead>
+        <tr>
+          <Th>Date</Th>
+          <Th>Person</Th>
+          <Th>Change</Th>
+          <Th>Reason</Th>
+          <Th>Changed by</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr key={item.id}>
+            <Td label="Date" primary className={styles.nowrap}>
+              {formatDate(item.effective_date)}
+            </Td>
+            <Td label="Person">
+              <span className={styles.employee}>
+                <Link href={`/employees/${encodeURIComponent(item.employee_id)}`}>
+                  {item.employee_name}
+                </Link>
+                <span className={styles.sub}>
+                  {item.employee_number} · {item.department.name}
+                </span>
+              </span>
+            </Td>
+            <Td label="Change" className={styles.words}>
+              {describeChange(item)}
+            </Td>
+            <Td label="Reason" className={styles.words}>{item.reason}</Td>
+            <Td label="Changed by" className={styles.words}>{item.changed_by}</Td>
+          </tr>
+        ))}
+      </tbody>
+    </DataTable>
+  );
+}
+
 export default async function HistoryPage({
   searchParams,
 }: {
@@ -71,34 +172,64 @@ export default async function HistoryPage({
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) redirect("/login");
 
-  const { cursor, ...filters } = parseAuditFilters(await searchParams);
-  const [feed, ref] = await Promise.all([getAuditFeed(token, filters, cursor), reference(token)]);
-  if (!feed.ok && feed.code === "unauthorized") redirect("/logout");
+  const params = await searchParams;
+  const tab = parseHistoryTab(params);
+  const { cursor, ...filters } =
+    tab === "details" ? parseChangesFilters(params) : parseAuditFilters(params);
+  const pay = tab === "pay" ? await getAuditFeed(token, filters, cursor) : null;
+  const details = tab === "details" ? await getChangesFeed(token, filters, cursor) : null;
+  const ref = await reference(token);
+  const feed = pay ?? details;
+  if (feed && !feed.ok && feed.code === "unauthorized") redirect("/logout");
 
   const activeCount = Object.keys(filters).filter((key) => key !== "limit").length;
-  const baseQuery = auditQuery(filters);
-  const retryHref = `/history${baseQuery}`;
+  const { field, ...sharedFilters } = filters as typeof filters & { field?: string };
+  const retryHref = historyHref(tab, filters);
+  const clearHref = historyHref(tab, {});
 
   return (
     <Shell>
       <PageHeader
         title="Change history"
-        subtitle="Every pay change, newest first. Entries cannot be edited or deleted."
+        subtitle="Every change to pay and employee details, newest first. Entries cannot be edited or deleted."
       />
       <div className={styles.page}>
-        <div className={styles.tabs}>
-          <Link href="/history" className={`${styles.tab} ${styles.active}`} aria-current="page">
+        <nav aria-label="History type" className={styles.tabs}>
+          <Link
+            href={historyHref("pay", sharedFilters)}
+            className={`${styles.tab} ${tab === "pay" ? styles.active : ""}`}
+            aria-current={tab === "pay" ? "page" : undefined}
+          >
             Pay
           </Link>
-          <span className={`${styles.tab} ${styles.disabled}`} aria-disabled="true">
+          <Link
+            href={historyHref("details", sharedFilters)}
+            className={`${styles.tab} ${tab === "details" ? styles.active : ""}`}
+            aria-current={tab === "details" ? "page" : undefined}
+          >
             Details
-          </span>
-          <p className={styles.tabNote}>
-            Detail and status changes appear here once the backend adds a combined feed
-          </p>
-        </div>
+          </Link>
+        </nav>
 
-        <FilterBar action="/history" activeCount={activeCount}>
+        <FilterBar
+          action="/history"
+          activeCount={activeCount}
+          hidden={tab === "details" ? { tab } : undefined}
+        >
+          {tab === "details" ? (
+            <Select
+              label="What changed"
+              name="field"
+              defaultValue={field ?? ""}
+            >
+              <option value="">All</option>
+              {FIELD_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <Select
             label="Department"
             name="department_id"
@@ -124,12 +255,12 @@ export default async function HistoryPage({
           />
         </FilterBar>
         {activeCount > 0 ? (
-          <Link href="/history" className={styles.clear}>
+          <Link href={clearHref} className={styles.clear}>
             Clear filters
           </Link>
         ) : null}
 
-        {!feed.ok ? (
+        {!feed || !feed.ok ? (
           <Notice
             tone="error"
             title="We could not load the change history."
@@ -139,58 +270,21 @@ export default async function HistoryPage({
               </LinkButton>
             }
           >
-            {describeFailure(feed).formError}
+            {feed ? describeFailure(feed).formError : null}
           </Notice>
         ) : feed.data.items.length === 0 ? (
           <EmptyState title="No changes match these filters." />
         ) : (
           <>
-            <DataTable caption="Pay changes, newest first">
-              <thead>
-                <tr>
-                  <Th>Effective</Th>
-                  <Th>Employee</Th>
-                  <Th>Change</Th>
-                  <Th>Reason</Th>
-                  <Th>Changed by</Th>
-                  <Th numeric>US dollars at the time</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {feed.data.items.map((item) => (
-                  <tr key={item.id}>
-                    <Td label="Effective" primary className={styles.nowrap}>
-                      {formatDate(item.effective_date)}
-                    </Td>
-                    <Td label="Employee">
-                      <span className={styles.employee}>
-                        <Link href={`/employees/${encodeURIComponent(item.employee_id)}`}>
-                          {item.employee_name}
-                        </Link>
-                        <span className={styles.sub}>
-                          {item.employee_number} · {item.department.name}
-                        </span>
-                      </span>
-                    </Td>
-                    <Td label="Change" className={styles.words}>
-                      <Change item={item} />
-                    </Td>
-                    <Td label="Reason" className={styles.words}>{item.reason}</Td>
-                    <Td label="Changed by" className={styles.words}>{item.changed_by}</Td>
-                    <Td label="US dollars" numeric className={styles.nowrap}>
-                      {formatUsd(item.new_salary_usd_scaled, item.salary_usd_scale)}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </DataTable>
+            {pay?.ok ? <PayTable items={pay.data.items} /> : null}
+            {details?.ok ? <DetailsTable items={details.data.items} /> : null}
             <nav aria-label="Pagination" className={styles.more}>
               <p className={styles.hint}>
                 {cursor ? "Use your browser's back button to return to newer changes." : "Showing the newest changes."}
               </p>
               {feed.data.next_cursor ? (
                 <LinkButton
-                  href={`/history${auditQuery(filters, feed.data.next_cursor)}`}
+                  href={historyHref(tab, filters, feed.data.next_cursor)}
                   variant="quiet"
                 >
                   Load older

@@ -215,6 +215,33 @@ export type AuditFeedPage = {
   next_cursor: string | null;
 };
 
+export type ChangeField =
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "job_title"
+  | "department_id"
+  | "level"
+  | "status";
+
+export type ChangeFilters = AuditFilters & {
+  field?: ChangeField;
+};
+
+export type ChangeFeedItem = EmployeeChange & {
+  employee_id: string;
+  employee_number: string;
+  employee_name: string;
+  department: Department;
+  previous_label: string | null;
+  new_label: string | null;
+};
+
+export type ChangeFeedPage = {
+  items: ChangeFeedItem[];
+  next_cursor: string | null;
+};
+
 export type LoginRequest = {
   email: string;
   password: string;

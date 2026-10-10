@@ -28,17 +28,7 @@
   border-bottom-color: var(--teal-700);
 }
 
-.disabled {
-  color: var(--text-faint);
-  cursor: not-allowed;
-}
 
-.tabNote {
-  flex: 1 1 260px;
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-subtle);
-}
 
 .employee {
   display: grid;

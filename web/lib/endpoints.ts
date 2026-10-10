@@ -1,12 +1,14 @@
 import { backendFetch } from "./api";
 import { MESSAGES, failureFromResponse, networkFailure } from "./errors";
 import type { ApiResult } from "./errors";
-import { auditQuery, directoryQuery, scopeQuery } from "./query";
+import { auditQuery, changesQuery, directoryQuery, scopeQuery } from "./query";
 import type {
   AnalyticsOverview,
   AuditFeedPage,
   AuditFilters,
   AuditPage,
+  ChangeFeedPage,
+  ChangeFilters,
   ChangePayRequest,
   ChangeStatusRequest,
   CreateEmployeeRequest,
@@ -179,6 +181,14 @@ export function getAuditFeed(
   cursor?: string,
 ): Promise<ApiResult<AuditFeedPage>> {
   return request("GET", `/audit${auditQuery(filters, cursor)}`, token);
+}
+
+export function getChangesFeed(
+  token: string,
+  filters: ChangeFilters = {},
+  cursor?: string,
+): Promise<ApiResult<ChangeFeedPage>> {
+  return request("GET", `/changes${changesQuery(filters, cursor)}`, token);
 }
 
 export function getOverview(
