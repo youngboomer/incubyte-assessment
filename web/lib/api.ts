@@ -1,4 +1,6 @@
+import { headers as nextHeaders } from "next/headers";
 import { connection } from "next/server";
+import { pickClientIp } from "./client-ip";
 
 export async function backendFetch(
   path: string,
@@ -18,6 +20,15 @@ export async function backendFetch(
   const headers = new Headers(init?.headers);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
+  }
+  headers.delete("x-forwarded-for");
+  try {
+    const clientIp = pickClientIp(await nextHeaders());
+    if (clientIp) {
+      headers.set("x-forwarded-for", clientIp);
+    }
+  } catch {
+    // outside a request scope there is no visitor address
   }
   const base = backendUrl.replace(/\/$/, "");
   return fetch(`${base}${path}`, {

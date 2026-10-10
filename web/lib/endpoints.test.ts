@@ -109,6 +109,19 @@ describe("failures do not throw", () => {
     expect(backendFetch.mock.calls[0]?.[1]).toBeUndefined();
   });
 
+  test("logout posts with the token and accepts 204", async () => {
+    backendFetch.mockResolvedValue(new Response(null, { status: 204 }));
+    expect(await endpoints.logout("tok")).toEqual({ ok: true, data: null });
+    expect(backendFetch).toHaveBeenCalledWith("/auth/logout", "tok", { method: "POST" });
+  });
+
+  test("logout reports 401 and network errors as failures", async () => {
+    backendFetch.mockResolvedValueOnce(json({ detail: "Not authenticated" }, 401));
+    expect(await endpoints.logout("t")).toMatchObject({ ok: false, status: 401 });
+    backendFetch.mockRejectedValueOnce(new TypeError("fetch failed"));
+    expect(await endpoints.logout("t")).toMatchObject({ ok: false, code: "network" });
+  });
+
   test("non-JSON success body is a failure", async () => {
     backendFetch.mockResolvedValue(new Response("oops", { status: 200 }));
     expect(await endpoints.me("t")).toMatchObject({ ok: false, code: "server" });
