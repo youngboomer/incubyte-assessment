@@ -24,6 +24,8 @@ services:
       APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
       HR_EMAIL: ${HR_EMAIL:-hr@acme.test}
       HR_PASSWORD: ${HR_PASSWORD:-compulse-demo}
+      HR_PASSWORD_HASH: ${HR_PASSWORD_HASH:-}
+      APP_ENV: ${APP_ENV:-development}
       TOKEN_MAX_AGE_SECONDS: ${TOKEN_MAX_AGE_SECONDS:-43200}
       SEED_COUNT: ${SEED_COUNT:-10000}
     volumes:

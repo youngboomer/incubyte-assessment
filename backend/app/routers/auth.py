@@ -1,7 +1,10 @@
+import hmac
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from app.deps import issue_token, require_hr
+from app.passwords import verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,11 +26,40 @@ class MeResponse(BaseModel):
     name: str
 
 
+def _client_key(request: Request) -> str:
+    if request.app.state.settings.trust_proxy_headers:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
+
+
+def _credentials_match(settings, email: str, password: str) -> bool:
+    email_ok = hmac.compare_digest(email.encode(), settings.hr_email.encode())
+    if settings.hr_password_hash:
+        password_ok = verify_password(password, settings.hr_password_hash)
+    else:
+        password_ok = hmac.compare_digest(password.encode(), settings.hr_password.encode())
+    return email_ok and password_ok
+
+
 @router.post("/login")
 async def login(body: LoginRequest, request: Request) -> LoginResponse:
     settings = request.app.state.settings
-    if body.email != settings.hr_email or body.password != settings.hr_password:
+    limiter = request.app.state.login_limiter
+    client = _client_key(request)
+    retry_after = limiter.retry_after(client)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts. Try again in a few minutes.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    if not _credentials_match(settings, body.email, body.password):
+        limiter.record_failure(client)
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    limiter.clear(client)
     return LoginResponse(
         access_token=issue_token(settings.app_secret, settings.hr_email),
         token_type="bearer",
