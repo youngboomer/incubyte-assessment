@@ -36,6 +36,16 @@ class CountryBreakdown(BaseModel):
     average_salary_usd_scaled: str
 
 
+class LevelBreakdown(BaseModel):
+    level: str
+    headcount: int
+    total_salary_usd_scaled: str
+    average_salary_usd_scaled: str
+    min_salary_usd_scaled: str
+    p50_salary_usd_scaled: str
+    max_salary_usd_scaled: str
+
+
 class HistogramBucket(BaseModel):
     label: str
     count: int
@@ -51,7 +61,56 @@ class AnalyticsOverview(BaseModel):
     p75_salary_usd_scaled: str
     by_department: list[DepartmentBreakdown]
     by_country: list[CountryBreakdown]
+    by_level: list[LevelBreakdown]
     histogram: list[HistogramBucket]
+
+
+_LEVELS = ("IC1", "IC2", "IC3", "IC4", "IC5", "M1", "M2")
+
+_SCOPE_DEPARTMENT = "AND employees.department_id = :department_id"
+_SCOPE_COUNTRY = "AND employees.country_code = :country"
+_SCOPE_LEVEL = "AND employees.level = :level"
+_SCOPE_CURRENCY = "AND employees.currency_code = :currency"
+
+_TOTAL_SQL = """
+    SELECT COUNT(*) AS headcount,
+           SUM(CAST(salary_usd_scaled AS INTEGER)) AS total_cents
+    FROM employees
+    WHERE status = 'active'
+    {scope}
+"""
+_SALARY_SQL = """
+    SELECT level, salary_usd_scaled
+    FROM employees
+    WHERE status = 'active'
+    {scope}
+"""
+_DEPARTMENT_SQL = """
+    SELECT departments.id AS department_id,
+           departments.name AS department_name,
+           COUNT(*) AS headcount,
+           SUM(CAST(employees.salary_usd_scaled AS INTEGER)) AS total_cents
+    FROM employees
+    JOIN departments ON departments.id = employees.department_id
+    WHERE employees.status = 'active'
+    {scope}
+    GROUP BY departments.id, departments.name
+    HAVING COUNT(*) > 0
+    ORDER BY departments.name
+"""
+_COUNTRY_SQL = """
+    SELECT countries.code AS country_code,
+           countries.name AS country_name,
+           COUNT(*) AS headcount,
+           SUM(CAST(employees.salary_usd_scaled AS INTEGER)) AS total_cents
+    FROM employees
+    JOIN countries ON countries.code = employees.country_code
+    WHERE employees.status = 'active'
+    {scope}
+    GROUP BY countries.code, countries.name
+    HAVING COUNT(*) > 0
+    ORDER BY countries.name
+"""
 
 
 def _average_scaled(sum_cents: int, count: int) -> str:
@@ -95,72 +154,74 @@ def _as_int(value: object) -> int:
     return value
 
 
-async def load_overview(session: AsyncSession) -> AnalyticsOverview:
-    total = (
-        await session.execute(
-            text(
-                """
-                SELECT COUNT(*) AS headcount,
-                       SUM(CAST(salary_usd_scaled AS INTEGER)) AS total_cents
-                FROM employees
-                WHERE status = 'active'
-                """
+def _scope(
+    department_id: int | None,
+    country: str | None,
+    level: str | None,
+    currency: str | None,
+) -> tuple[str, dict[str, object]]:
+    clauses: list[str] = []
+    params: dict[str, object] = {}
+    for clause, name, value in (
+        (_SCOPE_DEPARTMENT, "department_id", department_id),
+        (_SCOPE_COUNTRY, "country", country),
+        (_SCOPE_LEVEL, "level", level),
+        (_SCOPE_CURRENCY, "currency", currency),
+    ):
+        if value is not None:
+            clauses.append(clause)
+            params[name] = value
+    return "\n".join(clauses), params
+
+
+def _by_level(rows: list[tuple[str, str]]) -> list[LevelBreakdown]:
+    grouped: dict[str, list[str]] = {}
+    for level, value in rows:
+        grouped.setdefault(level, []).append(value)
+    breakdowns = []
+    for level in _LEVELS:
+        values = grouped.get(level)
+        if not values:
+            continue
+        amounts = [scaled_to_decimal(value, 2) for value in values]
+        total_cents = sum(int(value) for value in values)
+        breakdowns.append(
+            LevelBreakdown(
+                level=level,
+                headcount=len(values),
+                total_salary_usd_scaled=str(total_cents),
+                average_salary_usd_scaled=_average_scaled(total_cents, len(values)),
+                min_salary_usd_scaled=decimal_to_scaled(min(amounts), 2),
+                p50_salary_usd_scaled=_quartiles(amounts)[1],
+                max_salary_usd_scaled=decimal_to_scaled(max(amounts), 2),
             )
         )
-    ).one()
+    return breakdowns
+
+
+async def load_overview(
+    session: AsyncSession,
+    department_id: int | None = None,
+    country: str | None = None,
+    level: str | None = None,
+    currency: str | None = None,
+) -> AnalyticsOverview:
+    scope, params = _scope(department_id, country, level, currency)
+    total = (await session.execute(text(_TOTAL_SQL.format(scope=scope)), params)).one()
     headcount = _as_int(total.headcount)
     total_cents = 0 if total.total_cents is None else _as_int(total.total_cents)
 
-    salary_rows = (
-        await session.execute(
-            text(
-                """
-                SELECT salary_usd_scaled
-                FROM employees
-                WHERE status = 'active'
-                """
-            )
-        )
-    ).scalars()
-    amounts = [scaled_to_decimal(value, 2) for value in salary_rows]
+    salary_rows = [
+        (str(row.level), str(row.salary_usd_scaled))
+        for row in await session.execute(text(_SALARY_SQL.format(scope=scope)), params)
+    ]
+    amounts = [scaled_to_decimal(value, 2) for _, value in salary_rows]
     p25, p50, p75 = _quartiles(amounts)
 
     departments = (
-        await session.execute(
-            text(
-                """
-                SELECT departments.id AS department_id,
-                       departments.name AS department_name,
-                       COUNT(*) AS headcount,
-                       SUM(CAST(employees.salary_usd_scaled AS INTEGER)) AS total_cents
-                FROM employees
-                JOIN departments ON departments.id = employees.department_id
-                WHERE employees.status = 'active'
-                GROUP BY departments.id, departments.name
-                HAVING COUNT(*) > 0
-                ORDER BY departments.name
-                """
-            )
-        )
+        await session.execute(text(_DEPARTMENT_SQL.format(scope=scope)), params)
     ).mappings()
-    countries = (
-        await session.execute(
-            text(
-                """
-                SELECT countries.code AS country_code,
-                       countries.name AS country_name,
-                       COUNT(*) AS headcount,
-                       SUM(CAST(employees.salary_usd_scaled AS INTEGER)) AS total_cents
-                FROM employees
-                JOIN countries ON countries.code = employees.country_code
-                WHERE employees.status = 'active'
-                GROUP BY countries.code, countries.name
-                HAVING COUNT(*) > 0
-                ORDER BY countries.name
-                """
-            )
-        )
-    ).mappings()
+    countries = (await session.execute(text(_COUNTRY_SQL.format(scope=scope)), params)).mappings()
 
     return AnalyticsOverview(
         headcount=headcount,
@@ -194,5 +255,6 @@ async def load_overview(session: AsyncSession) -> AnalyticsOverview:
             )
             for row in countries
         ],
+        by_level=_by_level(salary_rows),
         histogram=_histogram(amounts),
     )

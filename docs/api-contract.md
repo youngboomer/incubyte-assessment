@@ -219,6 +219,17 @@ Missing id: 404.
 
 Active employees only. Money figures in the payload are USD digit strings at scale 2, except `headcount`.
 
+Optional query parameters narrow the scope. They combine with AND, on top of the active-only rule.
+
+| Param | Meaning |
+| --- | --- |
+| `department_id` | Integer department id. |
+| `country` | Country code, matched exactly (for example `US`). |
+| `level` | One of `IC1`, `IC2`, `IC3`, `IC4`, `IC5`, `M1`, `M2`. Anything else: 422. |
+| `currency` | Pay currency code, matched exactly (for example `GBP`). |
+
+Every figure in the response, including the breakdowns and the histogram, is computed over the scoped set. An unknown department, country or currency, or a combination that matches nobody, is not an error. It returns the zeroed shape with empty `by_department`, `by_country`, `by_level` and zero-count histogram buckets.
+
 ```json
 {
   "headcount": 9600,
@@ -246,6 +257,17 @@ Active employees only. Money figures in the payload are USD digit strings at sca
       "average_salary_usd_scaled": "18000000"
     }
   ],
+  "by_level": [
+    {
+      "level": "IC1",
+      "headcount": 900,
+      "total_salary_usd_scaled": "4500000000",
+      "average_salary_usd_scaled": "5000000",
+      "min_salary_usd_scaled": "4000000",
+      "p50_salary_usd_scaled": "5000000",
+      "max_salary_usd_scaled": "6500000"
+    }
+  ],
   "histogram": [
     { "label": "0–50k", "count": 400 },
     { "label": "50–75k", "count": 800 },
@@ -259,6 +281,8 @@ Active employees only. Money figures in the payload are USD digit strings at sca
 ```
 
 `average_salary_usd_scaled` is half-even rounded to cents. Quartiles use `statistics.quantiles(..., n=4, method="inclusive")`.
+
+`by_level` has one entry per level with at least one employee in scope, ordered IC1 to IC5, M1, M2. `p50_salary_usd_scaled` is the inclusive median, half-even rounded to cents like the average. A level with one person reports that salary for min, p50 and max.
 
 ## Planning rates
 
