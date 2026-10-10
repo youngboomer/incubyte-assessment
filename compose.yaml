@@ -1,24 +1,53 @@
+# Together the two containers stay within 0.3 CPU and 250 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 5m
+    max-file: "2"
+
 services:
   frontend:
     build: ./web
     container_name: comppulse-frontend
     restart: unless-stopped
+    cpus: 0.15
+    mem_limit: 140m
+    memswap_limit: 140m
+    pids_limit: 100
+    logging: *logging
     environment:
       BACKEND_URL: http://backend:65524
       PORT: "65525"
       HOSTNAME: "0.0.0.0"
+      NODE_OPTIONS: --max-old-space-size=96
     ports:
       - "127.0.0.1:65525:65525"
     networks:
       - edge
       - internal
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - "exec 3<>/dev/tcp/127.0.0.1/65525 && printf 'GET /login HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   backend:
     build: ./backend
     container_name: comppulse-backend
     restart: unless-stopped
+    cpus: 0.15
+    mem_limit: 110m
+    memswap_limit: 110m
+    pids_limit: 100
+    logging: *logging
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/comppulse.db
       APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
@@ -32,6 +61,16 @@ services:
       - db_data:/data
     networks:
       - internal
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - "exec 3<>/dev/tcp/127.0.0.1/65524 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   # Docker does not publish a port for a container that is only on an
