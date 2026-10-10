@@ -1,5 +1,7 @@
 import type {
   AuditFilters,
+  ChangeField,
+  ChangeFilters,
   DirectoryFilters,
   EmployeeStatus,
   Level,
@@ -22,6 +24,17 @@ export const SORTS: readonly SortKey[] = [
   "salary_usd",
   "hire_date",
 ];
+export const CHANGE_FIELDS: readonly ChangeField[] = [
+  "first_name",
+  "last_name",
+  "email",
+  "job_title",
+  "department_id",
+  "level",
+  "status",
+];
+export const HISTORY_TABS = ["pay", "details"] as const;
+export type HistoryTab = (typeof HISTORY_TABS)[number];
 export const DIRECTIONS: readonly SortDirection[] = ["asc", "desc"];
 
 const MAX_INT64 = BigInt("9223372036854775807");
@@ -47,6 +60,17 @@ const SCOPE_KEYS = ["department_id", "country", "level", "currency"] as const;
 const AUDIT_KEYS = [
   "employee_id",
   "department_id",
+  "since",
+  "until",
+  "changed_by",
+  "limit",
+  "cursor",
+] as const;
+
+const CHANGES_KEYS = [
+  "employee_id",
+  "department_id",
+  "field",
   "since",
   "until",
   "changed_by",
@@ -85,6 +109,22 @@ export function scopeQuery(filters: ScopeFilters): string {
 
 export function auditQuery(filters: AuditFilters, cursor?: string): string {
   return buildQuery({ ...filters, cursor }, AUDIT_KEYS);
+}
+
+export function changesQuery(filters: ChangeFilters, cursor?: string): string {
+  return buildQuery({ ...filters, cursor }, CHANGES_KEYS);
+}
+
+export function historyHref(
+  tab: HistoryTab,
+  filters: AuditFilters | ChangeFilters,
+  cursor?: string,
+): string {
+  const query =
+    tab === "details"
+      ? buildQuery({ tab, ...filters, cursor }, ["tab", ...CHANGES_KEYS])
+      : auditQuery(filters, cursor);
+  return `/history${query}`;
 }
 
 function first(params: SearchParams, key: string): string | undefined {
@@ -179,5 +219,16 @@ export function parseAuditFilters(params: SearchParams): AuditFilters & { cursor
     changed_by: first(params, "changed_by"),
     limit: limit(first(params, "limit")),
     cursor: first(params, "cursor"),
+  });
+}
+
+export function parseHistoryTab(params: SearchParams): HistoryTab {
+  return oneOf(HISTORY_TABS, first(params, "tab")) ?? "pay";
+}
+
+export function parseChangesFilters(params: SearchParams): ChangeFilters & { cursor?: string } {
+  return compact({
+    ...parseAuditFilters(params),
+    field: oneOf(CHANGE_FIELDS, first(params, "field")),
   });
 }

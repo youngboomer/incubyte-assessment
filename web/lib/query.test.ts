@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
   auditQuery,
+  changesQuery,
+  historyHref,
+  parseChangesFilters,
+  parseHistoryTab,
   buildQuery,
   directoryQuery,
   parseAuditFilters,
@@ -117,5 +121,42 @@ describe("audit filters", () => {
   test("rejects bad dates and inverted range", () => {
     expect(parseAuditFilters({ since: "2026-02-30" })).toEqual({});
     expect(parseAuditFilters({ since: "2026-03-01", until: "2026-01-01" })).toEqual({});
+  });
+});
+
+describe("change filters", () => {
+  test("round trip with field and cursor", () => {
+    const query = changesQuery({ field: "level", department_id: "1", since: "2026-01-01" }, "cur");
+    expect(query).toBe("?department_id=1&field=level&since=2026-01-01&cursor=cur");
+    expect(parseChangesFilters(toParams(query))).toEqual({
+      department_id: "1",
+      field: "level",
+      since: "2026-01-01",
+      cursor: "cur",
+    });
+  });
+
+  test("drops fields outside the allow-list", () => {
+    expect(parseChangesFilters({ field: "base_salary" })).toEqual({});
+    expect(parseChangesFilters({ field: "Level" })).toEqual({});
+    expect(parseChangesFilters({ field: ["status", "level"] })).toEqual({ field: "status" });
+  });
+
+  test("shares date validation with the pay filters", () => {
+    expect(parseChangesFilters({ since: "2026-03-01", until: "2026-01-01", field: "email" })).toEqual({
+      field: "email",
+    });
+  });
+
+  test("tab defaults to pay", () => {
+    expect(parseHistoryTab({})).toBe("pay");
+    expect(parseHistoryTab({ tab: "bogus" })).toBe("pay");
+    expect(parseHistoryTab({ tab: "details" })).toBe("details");
+  });
+
+  test("history links keep the tab only for details", () => {
+    expect(historyHref("pay", { since: "2026-01-01" })).toBe("/history?since=2026-01-01");
+    expect(historyHref("details", { field: "status" }, "c")).toBe("/history?tab=details&field=status&cursor=c");
+    expect(historyHref("details", {})).toBe("/history?tab=details");
   });
 });
