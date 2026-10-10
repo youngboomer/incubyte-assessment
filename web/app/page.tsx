@@ -1,164 +1,266 @@
+import type { Metadata } from "next";
+import Link from "next/link";
 import { cookies } from "next/headers";
-import { connection } from "next/server";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { Shell } from "../components/shell";
-import { backendFetch } from "../lib/api";
-import { formatScaled } from "../lib/format";
+import {
+  BarList,
+  Card,
+  CardHeader,
+  DataTable,
+  EmptyState,
+  FilterBar,
+  Histogram,
+  LinkButton,
+  Notice,
+  PageHeader,
+  RangeBar,
+  Select,
+  Td,
+  Th,
+} from "../components/ui";
+import { describeFailure } from "../lib/errors";
+import { getOverview, reference } from "../lib/endpoints";
+import { formatCompactUsd } from "../lib/format";
+import { LEVELS, parseScopeFilters, type SearchParams } from "../lib/query";
 import { SESSION_COOKIE } from "../lib/session";
-import type {
-  AnalyticsOverview,
-  CountryBreakdown,
-  DepartmentBreakdown,
-  SalaryHistogramBucket,
-} from "../lib/types";
+import type { AnalyticsOverview, Reference, ScopeFilters } from "../lib/types";
 import styles from "./dashboard.module.css";
+import { formatWholeUsd, spreadOf } from "./overview-data";
 
-export default async function Page() {
+export const metadata: Metadata = { title: "Pay overview – CompPulse" };
+
+const count = new Intl.NumberFormat("en-US");
+
+function withoutKey(filters: ScopeFilters, key: keyof ScopeFilters): string {
+  const search = new URLSearchParams();
+  for (const [name, value] of Object.entries(filters)) {
+    if (name !== key && value) search.set(name, value);
+  }
+  const text = search.toString();
+  return text === "" ? "/" : `/?${text}`;
+}
+
+function chipsFor(filters: ScopeFilters, ref: Reference | null) {
+  const chips: { label: string; removeHref: string }[] = [];
+  if (filters.department_id) {
+    const name = ref?.departments.find((item) => String(item.id) === filters.department_id)?.name;
+    chips.push({
+      label: `Department: ${name ?? filters.department_id}`,
+      removeHref: withoutKey(filters, "department_id"),
+    });
+  }
+  if (filters.country) {
+    const name = ref?.countries.find((item) => item.code === filters.country)?.name;
+    chips.push({
+      label: `Country: ${name ?? filters.country}`,
+      removeHref: withoutKey(filters, "country"),
+    });
+  }
+  if (filters.level) {
+    chips.push({ label: `Level: ${filters.level}`, removeHref: withoutKey(filters, "level") });
+  }
+  return chips;
+}
+
+export default async function PayOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   await connection();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) redirect("/login");
-  const meResponse = await backendFetch("/auth/me", token);
-  if (meResponse.status === 401) redirect("/logout");
 
-  const overviewResponse = await backendFetch("/analytics/overview", token);
-  if (!overviewResponse.ok) {
-    return (
-      <Shell>
-        <p className={styles.error}>
-          Could not load the dashboard. {overviewResponse.status}
-        </p>
-      </Shell>
-    );
-  }
+  const filters = parseScopeFilters(await searchParams);
+  const [overviewResult, referenceResult] = await Promise.all([
+    getOverview(token, filters),
+    reference(token),
+  ]);
+  if (!overviewResult.ok && overviewResult.code === "unauthorized") redirect("/logout");
 
-  const body = (await overviewResponse.json()) as AnalyticsOverview;
-  const scale = body.salary_usd_scale;
-  const money = (scaled: string) => formatScaled(scaled, scale, "USD");
+  const ref = referenceResult.ok ? referenceResult.data : null;
+  const chips = chipsFor(filters, ref);
+  const retryHref = withoutKey(filters, "currency");
 
   return (
     <Shell>
-      <h1>Dashboard</h1>
-      {body.headcount === 0 ? (
-        <p className={styles.empty}>No active employees.</p>
-      ) : null}
-      <section className={styles.strip} aria-label="Pay totals">
-        <article>
-          <h2>Headcount</h2>
-          <p>{body.headcount}</p>
-        </article>
-        <article>
-          <h2>Total</h2>
-          <p>{money(body.total_salary_usd_scaled)}</p>
-        </article>
-        <article>
-          <h2>Average</h2>
-          <p>{money(body.average_salary_usd_scaled)}</p>
-        </article>
-      </section>
-      <section className={styles.strip} aria-label="Quartiles">
-        <article>
-          <h2>P25</h2>
-          <p>{money(body.p25_salary_usd_scaled)}</p>
-        </article>
-        <article>
-          <h2>P50</h2>
-          <p>{money(body.p50_salary_usd_scaled)}</p>
-        </article>
-        <article>
-          <h2>P75</h2>
-          <p>{money(body.p75_salary_usd_scaled)}</p>
-        </article>
-      </section>
-      <DepartmentBars rows={body.by_department} money={money} />
-      <CountryBars rows={body.by_country} money={money} />
-      <Histogram buckets={body.histogram} />
+      <PageHeader title="Pay overview" subtitle="How do we pay people across the company?" />
+      <div className={styles.page}>
+        <div className={styles.filters}>
+          <FilterBar action="/" activeCount={chips.length}>
+            <Select
+              label="Department"
+              name="department_id"
+              defaultValue={filters.department_id ?? ""}
+            >
+              <option value="">All departments</option>
+              {ref?.departments.map((item) => (
+                <option key={item.id} value={String(item.id)}>
+                  {item.name}
+                </option>
+              ))}
+            </Select>
+            <Select label="Country" name="country" defaultValue={filters.country ?? ""}>
+              <option value="">All countries</option>
+              {ref?.countries.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
+              ))}
+            </Select>
+            <Select label="Level" name="level" defaultValue={filters.level ?? ""}>
+              <option value="">All levels</option>
+              {LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </Select>
+          </FilterBar>
+          {chips.length > 0 ? (
+            <Link href="/" className={styles.reset}>
+              Reset
+            </Link>
+          ) : null}
+          <p className={styles.note}>
+            Active employees only · all amounts in US dollars at planning rates
+          </p>
+        </div>
+
+        {!overviewResult.ok ? (
+          <Notice
+            tone="error"
+            title="We could not load the pay overview."
+            action={
+              <LinkButton href={retryHref} variant="quiet" size="sm">
+                Retry
+              </LinkButton>
+            }
+          >
+            {describeFailure(overviewResult).formError}
+          </Notice>
+        ) : overviewResult.data.headcount === 0 ? (
+          <Card>
+            <EmptyState title="No active employees match this scope." />
+          </Card>
+        ) : (
+          <Overview data={overviewResult.data} />
+        )}
+      </div>
     </Shell>
   );
 }
 
-function barWidth(count: number, max: number): string {
-  if (max === 0) {
-    return "0%";
-  }
-  return `${(count / max) * 100}%`;
-}
+function Overview({ data }: { data: AnalyticsOverview }) {
+  const scale = data.salary_usd_scale;
+  const usd = (scaled: string) => formatWholeUsd(scaled, scale);
+  const spread = spreadOf(data);
+  const wholeFormat = (value: number) =>
+    formatWholeUsd(String(Math.round(value * 10 ** scale)), scale);
+  const departments = [...data.by_department].sort((a, b) => b.headcount - a.headcount);
+  const countries = [...data.by_country].sort((a, b) => b.headcount - a.headcount);
 
-function DepartmentBars({
-  rows,
-  money,
-}: {
-  rows: DepartmentBreakdown[];
-  money: (scaled: string) => string;
-}) {
-  const max = rows.reduce((highest, row) => Math.max(highest, row.headcount), 0);
   return (
-    <section className={styles.chart}>
-      <h2>Departments</h2>
-      <ul className={styles.bars}>
-        {rows.map((row) => (
-          <li key={row.department_id}>
-            <div className={styles.meta}>
-              <span className={styles.name}>{row.department_name}</span>
-              <span>{row.headcount}</span>
-              <span>{money(row.total_salary_usd_scaled)}</span>
-            </div>
-            <div className={styles.track}>
-              <div className={styles.fill} style={{ width: barWidth(row.headcount, max) }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+    <>
+      <dl className={styles.figures}>
+        <div className={styles.figure}>
+          <dt>People</dt>
+          <dd>{count.format(data.headcount)}</dd>
+        </div>
+        <div className={styles.figure}>
+          <dt>Total payroll</dt>
+          <dd>{formatCompactUsd(data.total_salary_usd_scaled, scale)}</dd>
+        </div>
+        <div className={styles.figure}>
+          <dt>Average pay</dt>
+          <dd>{usd(data.average_salary_usd_scaled)}</dd>
+        </div>
+        <div className={`${styles.figure} ${styles.accent}`}>
+          <dt>Middle pay (median)</dt>
+          <dd>{usd(data.p50_salary_usd_scaled)}</dd>
+        </div>
+      </dl>
 
-function CountryBars({
-  rows,
-  money,
-}: {
-  rows: CountryBreakdown[];
-  money: (scaled: string) => string;
-}) {
-  const max = rows.reduce((highest, row) => Math.max(highest, row.headcount), 0);
-  return (
-    <section className={styles.chart}>
-      <h2>Countries</h2>
-      <ul className={styles.bars}>
-        {rows.map((row) => (
-          <li key={row.country_code}>
-            <div className={styles.meta}>
-              <span className={styles.name}>{row.country_name}</span>
-              <span>{row.headcount}</span>
-              <span>{money(row.total_salary_usd_scaled)}</span>
-            </div>
-            <div className={styles.track}>
-              <div className={styles.fill} style={{ width: barWidth(row.headcount, max) }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+      <Card aria-label="Compensation spread">
+        <CardHeader
+          title="Compensation spread"
+          description={`Half of people earn between ${usd(data.p25_salary_usd_scaled)} and ${usd(data.p75_salary_usd_scaled)}`}
+        />
+        <RangeBar {...spread} format={wholeFormat} ariaLabel="Compensation spread" />
+      </Card>
 
-function Histogram({ buckets }: { buckets: SalaryHistogramBucket[] }) {
-  const max = buckets.reduce((highest, bucket) => Math.max(highest, bucket.count), 0);
-  return (
-    <section className={styles.chart}>
-      <h2>Histogram</h2>
-      <ul className={styles.bars}>
-        {buckets.map((bucket, index) => (
-          <li key={`${index}-${bucket.label}`}>
-            <div className={styles.meta}>
-              <span className={styles.name}>{bucket.label}</span>
-              <span>{bucket.count}</span>
-            </div>
-            <div className={styles.track}>
-              <div className={styles.fill} style={{ width: barWidth(bucket.count, max) }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+      <div className={styles.pair}>
+        <Card aria-label="Pay distribution">
+          <CardHeader title="Pay distribution" description="People per pay range" />
+          <Histogram data={data.histogram} ariaLabel="People per pay range" />
+        </Card>
+        <Card aria-label="Pay by level">
+          <CardHeader title="Pay by level" description="Base pay in US dollars, by job level" />
+          <DataTable caption="Pay by level">
+            <thead>
+              <tr>
+                <Th>Level</Th>
+                <Th numeric>People</Th>
+                <Th numeric>Lowest</Th>
+                <Th numeric>Median</Th>
+                <Th numeric>Highest</Th>
+                <Th numeric>Average</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.by_level.map((row) => (
+                <tr key={row.level}>
+                  <Td label="Level" primary>
+                    {row.level}
+                  </Td>
+                  <Td label="People" numeric className={styles.num}>
+                    {count.format(row.headcount)}
+                  </Td>
+                  <Td label="Lowest" numeric className={styles.num}>
+                    {usd(row.min_salary_usd_scaled)}
+                  </Td>
+                  <Td label="Median" numeric className={styles.num}>
+                    {usd(row.p50_salary_usd_scaled)}
+                  </Td>
+                  <Td label="Highest" numeric className={styles.num}>
+                    {usd(row.max_salary_usd_scaled)}
+                  </Td>
+                  <Td label="Average" numeric className={styles.num}>
+                    {usd(row.average_salary_usd_scaled)}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        </Card>
+      </div>
+
+      <div className={styles.pair}>
+        <Card aria-label="By department">
+          <CardHeader title="By department" description="People, with average pay" />
+          <BarList
+            ariaLabel="People by department"
+            items={departments.map((row) => ({
+              label: row.department_name,
+              value: row.headcount,
+              display: `${count.format(row.headcount)} · avg ${usd(row.average_salary_usd_scaled)}`,
+            }))}
+          />
+        </Card>
+        <Card aria-label="By country">
+          <CardHeader title="By country" description="People, with average pay" />
+          <BarList
+            ariaLabel="People by country"
+            items={countries.map((row) => ({
+              label: row.country_name,
+              value: row.headcount,
+              display: `${count.format(row.headcount)} · avg ${usd(row.average_salary_usd_scaled)}`,
+            }))}
+          />
+        </Card>
+      </div>
+    </>
   );
 }

@@ -1,72 +1,87 @@
-.strip {
+.page {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin: 1rem 0;
+  gap: var(--space-4);
 }
 
-.strip article {
-  border: 1px solid #d5dee3;
-  padding: 0.75rem;
-}
-
-.strip h2 {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.strip p {
-  margin-top: 0.35rem;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.chart {
-  margin: 1.25rem 0;
-}
-
-.chart h2 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.bars {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.65rem;
-}
-
-.meta {
+.note {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  margin-bottom: 0.25rem;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
-.name {
+.note::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  background: var(--teal-700);
+  border-radius: 50%;
+}
+
+.filters {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.reset {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  font-size: 13px;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.figure {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.figure dt {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.figure dd {
+  margin: 0;
+  font-size: 28px;
   font-weight: 600;
-  margin-right: auto;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
-.track {
-  height: 0.7rem;
-  background: #e7eef2;
+.accent dd {
+  color: var(--teal-800);
 }
 
-.fill {
-  height: 100%;
-  background: #1d4e89;
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  gap: var(--space-4);
+  align-items: start;
 }
 
-.error {
-  color: #8a1f11;
+.skeletonCard {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
 }
 
-.empty {
-  color: #5c6b76;
+.num {
+  white-space: nowrap;
 }
