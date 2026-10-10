@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.compensation import (
@@ -26,7 +26,7 @@ def _raise_for_result(result: object) -> None:
 class FxRatePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    units_per_usd_scaled: str
+    units_per_usd_scaled: str = Field(max_length=20)
 
     @field_validator("units_per_usd_scaled")
     @classmethod

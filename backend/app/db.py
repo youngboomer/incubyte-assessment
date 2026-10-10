@@ -89,6 +89,12 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
+    )
+    """,
+    """
     CREATE INDEX IF NOT EXISTS idx_emp_status_dept
     ON employees(status, department_id)
     """,
