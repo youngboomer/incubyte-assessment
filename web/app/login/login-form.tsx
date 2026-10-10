@@ -1,32 +1,49 @@
 "use client";
 
-import { useActionState } from "react";
-import { loginAction, type LoginState } from "../../lib/auth-actions";
+import { useActionState, useState } from "react";
+import { Button, Input, Notice } from "../../components/ui";
+import { signInAction, type SignInState } from "./actions";
+import styles from "./login.module.css";
 
-const initialState: LoginState = { error: "" };
+const initialState: SignInState = { error: "", email: "" };
 
 export function LoginForm() {
-  const [state, formAction, pending] = useActionState(loginAction, initialState);
+  const [state, formAction, pending] = useActionState(signInAction, initialState);
+  const [visible, setVisible] = useState(false);
 
   return (
-    <form className="stack" action={formAction}>
-      <label>
-        Email
-        <input name="email" type="email" autoComplete="username" required />
-      </label>
-      <label>
-        Password
-        <input
+    <form action={formAction} className={styles.form}>
+      {state.error ? <Notice tone="error">{state.error}</Notice> : null}
+      <Input
+        name="email"
+        label="Email"
+        type="email"
+        autoComplete="username"
+        defaultValue={state.email}
+        key={state.email}
+        required
+      />
+      <div className={styles.passwordRow}>
+        <Input
           name="password"
-          type="password"
+          label="Password"
+          type={visible ? "text" : "password"}
           autoComplete="current-password"
           required
         />
-      </label>
-      <button type="submit" disabled={pending}>
-        Log in
-      </button>
-      {state.error ? <p>{state.error}</p> : null}
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-pressed={visible}
+          onClick={() => setVisible((value) => !value)}
+        >
+          {visible ? "Hide" : "Show"}
+          <span className="sr-only"> password</span>
+        </button>
+      </div>
+      <Button type="submit" loading={pending} className={styles.submit}>
+        Sign in
+      </Button>
     </form>
   );
 }

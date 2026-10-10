@@ -1,29 +1,13 @@
 import { cookies } from "next/headers";
-import { connection } from "next/server";
-import { NextResponse } from "next/server";
-import { backendFetch } from "../../../lib/api";
+import { connection, NextResponse } from "next/server";
+import { exportEmployeesCsv } from "../../../lib/endpoints";
+import { parseDirectoryFilters } from "../../../lib/query";
 import { SESSION_COOKIE } from "../../../lib/session";
 
 export const dynamic = "force-dynamic";
 
-const SORTS = new Set([
-  "name",
-  "employee_number",
-  "department",
-  "country",
-  "title",
-  "base_salary",
-  "salary_usd",
-  "hire_date",
-]);
-
-const FILTERS = ["q", "department_id", "country", "currency", "status", "sort", "direction"] as const;
-
 function redirectTo(location: string): NextResponse {
-  return new NextResponse(null, {
-    status: 307,
-    headers: { location },
-  });
+  return new NextResponse(null, { status: 307, headers: { location } });
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -33,43 +17,20 @@ export async function GET(request: Request): Promise<NextResponse> {
     return redirectTo("/login");
   }
 
-  const incoming = new URL(request.url).searchParams;
-  const filters = new URLSearchParams();
-  for (const key of FILTERS) {
-    const value = incoming.get(key)?.trim() ?? "";
-    if (!value) {
-      continue;
+  const params = Object.fromEntries(new URL(request.url).searchParams);
+  const result = await exportEmployeesCsv(token, parseDirectoryFilters(params));
+
+  if (!result.ok) {
+    if (result.code === "unauthorized") {
+      return redirectTo("/logout");
     }
-    if (key === "sort" && !SORTS.has(value)) {
-      continue;
-    }
-    if (key === "direction" && value !== "asc" && value !== "desc") {
-      continue;
-    }
-    filters.set(key, value);
+    return new NextResponse("Could not export employees.", { status: result.status || 502 });
   }
 
-  let response: Response;
-  try {
-    response = await backendFetch(`/employees/export.csv?${filters.toString()}`, token);
-  } catch {
-    return new NextResponse("Could not load employees.", { status: 502 });
-  }
-
-  if (response.status === 401) {
-    return redirectTo("/logout");
-  }
-  if (!response.ok) {
-    return new NextResponse(`Could not load employees. ${response.status}`, {
-      status: response.status,
-    });
-  }
-
-  const csv = await response.text();
-  return new NextResponse(csv, {
+  return new NextResponse(await result.data.text(), {
     status: 200,
     headers: {
-      "content-type": "text/csv",
+      "content-type": "text/csv; charset=utf-8",
       "content-disposition": 'attachment; filename="employees.csv"',
       "cache-control": "no-store",
     },
