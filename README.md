@@ -20,9 +20,17 @@ Salary management for ACME’s HR manager. The directory is seeded with 10,000 e
 - Email: `ss@interview.chetan`
 - Password: `incubyte`
 
-The password is a demo default from `.env.example`. Change `APP_SECRET` and `HR_PASSWORD` before a public host.
+The password is a demo default and only works with `APP_ENV=development`. Production refuses to start with the defaults.
 
-## Run
+## Run locally
+- `cp .env.example .env` (it sets `APP_ENV=development`), then `docker compose up --build`.
+- Without a `.env`, compose defaults to `APP_ENV=production` and the backend exits with `insecure_config`.
+
+## Deploy
+- Create `.env` with `APP_ENV=production`, a random `APP_SECRET` of 32+ characters, and `HR_PASSWORD_HASH` from `python -m app.passwords <password>`. Single-quote the hash because it contains `$`.
+- Both containers run as non-root with a read-only root filesystem and no capabilities. Only `/data` (volume) and `/tmp` (16 MB tmpfs) are writable.
+- Old `db_data` volumes are root-owned. Recreate once after this change: `docker compose down -v` (demo data is reseeded).
+- The proxy must forward `X-Real-IP` and redirect HTTP to HTTPS.
 - `docker compose up --build` publishes the frontend on `127.0.0.1:65525`. The backend listens on 65524 inside the Docker network and has no host port.
 - The frontend is on `edge` and `internal`. The backend is only on `internal`. Docker does not publish a port from an internal-only container.
 - Compose does not start nginx-proxy-manager.

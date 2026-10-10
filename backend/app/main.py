@@ -24,7 +24,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         await app.state.engine.dispose()
 
-    app = FastAPI(title="CompPulse", lifespan=lifespan)
+    docs_off = {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    app = FastAPI(
+        title="CompPulse",
+        lifespan=lifespan,
+        **(docs_off if app_settings.app_env == "production" else {}),
+    )
     app.state.settings = app_settings
     app.state.clock = time.monotonic
     app.state.login_limiter = LoginLimiter(

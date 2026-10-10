@@ -86,6 +86,17 @@ export async function login(credentials: LoginRequest): Promise<ApiResult<LoginR
   return result;
 }
 
+export async function logout(token: string): Promise<ApiResult<null>> {
+  const response = await call("POST", "/auth/logout", token);
+  if (response === null) {
+    return networkFailure();
+  }
+  if (!response.ok) {
+    return failureFromResponse(response.status, await readJson(response));
+  }
+  return { ok: true, data: null };
+}
+
 export function me(token: string): Promise<ApiResult<MeResponse>> {
   return request("GET", "/auth/me", token);
 }

@@ -4,7 +4,7 @@ from typing import Self
 
 from fastapi import Depends, HTTPException
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.routing import Match
 from starlette.types import Scope
@@ -74,16 +74,16 @@ def _raise_for_result(result: object) -> None:
 class EmployeeCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    first_name: str
-    last_name: str
-    email: str
-    job_title: str
+    first_name: str = Field(max_length=100)
+    last_name: str = Field(max_length=100)
+    email: str = Field(max_length=254)
+    job_title: str = Field(max_length=120)
     department_id: int
-    country_code: str
-    level: str
-    base_salary_scaled: str
-    variable_pay_scaled: str
-    status: str
+    country_code: str = Field(max_length=8)
+    level: str = Field(max_length=32)
+    base_salary_scaled: str = Field(max_length=20)
+    variable_pay_scaled: str = Field(max_length=20)
+    status: str = Field(max_length=32)
     hire_date: date
     comp_effective_date: date
 
@@ -122,9 +122,9 @@ class EmployeeCreate(BaseModel):
 class CompensationPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    base_salary_scaled: str
-    variable_pay_scaled: str
-    reason: str
+    base_salary_scaled: str = Field(max_length=20)
+    variable_pay_scaled: str = Field(max_length=20)
+    reason: str = Field(max_length=500)
     effective_date: date
     version_id: int
 
@@ -142,13 +142,13 @@ class CompensationPatch(BaseModel):
 class EmployeePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    first_name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    job_title: str | None = None
+    first_name: str | None = Field(default=None, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
+    email: str | None = Field(default=None, max_length=254)
+    job_title: str | None = Field(default=None, max_length=120)
     department_id: int | None = None
-    level: str | None = None
-    reason: str
+    level: str | None = Field(default=None, max_length=32)
+    reason: str = Field(max_length=500)
     effective_date: date
     version_id: int
 
@@ -191,8 +191,8 @@ class EmployeePatch(BaseModel):
 class StatusPost(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: str
-    reason: str
+    status: str = Field(max_length=32)
+    reason: str = Field(max_length=500)
     effective_date: date
     version_id: int
 

@@ -6,6 +6,10 @@ Money fields are digit strings plus a scale. `"12000050"` at scale 2 is 120000.5
 
 Unknown fields are ignored only where Pydantic defaults say so. Extra body fields are rejected. Unknown `sort` or `direction` is 422.
 
+Interactive docs (`/docs`, `/redoc`, `/openapi.json`) are off when `APP_ENV=production`.
+
+Input length limits (longer is 422): login email 254, password 256; employee first and last name 100, email 254, job title 120, country code 8, level and status 32; `reason` 500; `*_scaled` money strings and the fx rate 20; query `q` 200, `country` and `currency` 8, `salary_usd_min` and `salary_usd_max` 20, `cursor` 512; audit `employee_id` 64, `since` and `until` 40, `changed_by` 254.
+
 ## Auth
 
 `POST /auth/login`
@@ -25,6 +29,10 @@ Wrong credentials: 401 `{ "detail": "Invalid credentials" }`.
 ```json
 { "email": "ss@interview.chetan", "name": "HR Manager" }
 ```
+
+`POST /auth/logout`
+
+Requires the bearer token. Returns 204 with no body. The token's hash is stored in `revoked_tokens` until its natural expiry, and any later request with it gets 401. Expired rows are pruned on each logout. Without a valid token: 401.
 
 ## Health
 
@@ -349,7 +357,7 @@ Scale is 6. The handler recomputes `salary_usd_scaled` for every employee on tha
 
 | Status | When |
 | --- | --- |
-| 401 | Missing or bad token, or bad login |
+| 401 | Missing, bad, expired or logged-out token, or bad login |
 | 404 | Employee or currency not found |
 | 409 | Stale `version_id`, duplicate email, or setting the status an employee already has |
 | 422 | Validation, bad cursor, bad sort, money that is not a digit string |

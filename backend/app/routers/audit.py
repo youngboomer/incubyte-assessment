@@ -14,13 +14,13 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 @router.get("")
 async def read_audit_feed(
     request: Request,
-    employee_id: str | None = None,
+    employee_id: str | None = Query(default=None, max_length=64),
     department_id: int | None = None,
-    since: str | None = None,
-    until: str | None = None,
-    changed_by: str | None = None,
+    since: str | None = Query(default=None, max_length=40),
+    until: str | None = Query(default=None, max_length=40),
+    changed_by: str | None = Query(default=None, max_length=254),
     limit: int = Query(default=50, ge=1, le=100),
-    cursor: str | None = None,
+    cursor: str | None = Query(default=None, max_length=512),
     _: str = Depends(require_hr),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
