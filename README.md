@@ -6,7 +6,7 @@ Salary management for ACME's HR manager. Find any of 10,000 employees, change pa
 - **Employees:** search by name, email or employee number. Filter by country, department, level, status and a US dollar pay range. Sort, page, export the filtered view to CSV.
 - **Add and edit:** add an employee (currency follows the country), edit title, department and level, terminate or reactivate with a date and a reason.
 - **Change pay:** base and variable pay with an effective date and a mandatory reason, a live preview in US dollars, and a clear message when someone else changed the record first.
-- **History:** every pay change and detail change is logged with who, when, why and the exchange rate used. The log is append-only.
+- **History:** every pay change and every detail change (level, title, department, name, email, terminate and reactivate) is logged with who, when and why, and pay changes also keep the exchange rate used. Change history has a Pay tab and a Details tab with filters. The logs are append-only.
 - **Pay overview:** headcount, total, average and middle pay, a pay range bar, a distribution chart, pay by level, and breakdowns by department and country, with filters.
 - **Planning rates:** one exchange rate per currency. Changing one recalculates everyone paid in it; past history keeps the rate it used.
 - **Phone to desktop:** one fluid layout. Tables become cards and the menu collapses.
@@ -43,11 +43,11 @@ Seed data: 10,000 employees with unique, country-matched names from `backend/app
 
 ## Tests
 ```bash
-cd backend && pytest                      # 273 tests
-cd web && npm test                        # 79 unit tests
+cd backend && pytest                      # 305 tests
+cd web && npm test                        # 91 unit tests
 cd web && node --experimental-strip-types --test proxy-rules.test.ts   # 6 login-gate tests
 ```
-Backend coverage is about 95%. Lint: `cd backend && ruff check .`.
+Backend coverage is about 96%. Lint: `cd backend && ruff check .`.
 
 ## Deploy
 Create `.env` next to `compose.yaml` (it is git-ignored) with:
