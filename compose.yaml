@@ -22,8 +22,8 @@ services:
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/comppulse.db
       APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
-      HR_EMAIL: ${HR_EMAIL:-hr@acme.test}
-      HR_PASSWORD: ${HR_PASSWORD:-compulse-demo}
+      HR_EMAIL: ${HR_EMAIL:-ss@interview.chetan}
+      HR_PASSWORD: ${HR_PASSWORD:-incubyte}
       HR_PASSWORD_HASH: ${HR_PASSWORD_HASH:-}
       APP_ENV: ${APP_ENV:-development}
       TOKEN_MAX_AGE_SECONDS: ${TOKEN_MAX_AGE_SECONDS:-43200}

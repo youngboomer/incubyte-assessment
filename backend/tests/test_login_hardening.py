@@ -23,7 +23,9 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
     return Settings(database_url=url, seed_count=0, **overrides)
 
 
-def _login(client: TestClient, password: str, email: str = "hr@acme.test", ip: str | None = None):
+def _login(
+    client: TestClient, password: str, email: str = "ss@interview.chetan", ip: str | None = None
+):
     headers = {"x-forwarded-for": ip} if ip else {}
     return client.post("/auth/login", json={"email": email, "password": password}, headers=headers)
 
@@ -33,20 +35,20 @@ def test_hashed_password(tmp_path: Path) -> None:
     with TestClient(create_app(settings)) as client:
         assert _login(client, "hashed-pw").status_code == 200
         assert _login(client, "wrong").status_code == 401
-        assert _login(client, "compulse-demo").status_code == 401
+        assert _login(client, "incubyte").status_code == 401
 
 
 def test_plain_password_and_wrong_email(tmp_path: Path) -> None:
     with TestClient(create_app(_settings(tmp_path))) as client:
-        assert _login(client, "compulse-demo").status_code == 200
-        assert _login(client, "compulse-demo", email="x@acme.test").status_code == 401
+        assert _login(client, "incubyte").status_code == 200
+        assert _login(client, "incubyte", email="x@acme.test").status_code == 401
         assert _login(client, "nope").status_code == 401
 
 
 def test_malformed_configured_hash_rejects_login(tmp_path: Path) -> None:
     settings = _settings(tmp_path, hr_password_hash="garbage")
     with TestClient(create_app(settings)) as client:
-        assert _login(client, "compulse-demo").status_code == 401
+        assert _login(client, "incubyte").status_code == 401
 
 
 def test_lockout_after_failures(tmp_path: Path) -> None:
@@ -57,17 +59,17 @@ def test_lockout_after_failures(tmp_path: Path) -> None:
         assert blocked.status_code == 429
         assert blocked.json() == {"detail": "Too many attempts. Try again in a few minutes."}
         assert int(blocked.headers["retry-after"]) > 0
-        assert _login(client, "compulse-demo").status_code == 429
+        assert _login(client, "incubyte").status_code == 429
 
 
 def test_success_resets_counter(tmp_path: Path) -> None:
     with TestClient(create_app(_settings(tmp_path))) as client:
         for _ in range(4):
             _login(client, "bad")
-        assert _login(client, "compulse-demo").status_code == 200
+        assert _login(client, "incubyte").status_code == 200
         for _ in range(4):
             assert _login(client, "bad").status_code == 401
-        assert _login(client, "compulse-demo").status_code == 200
+        assert _login(client, "incubyte").status_code == 200
 
 
 def test_window_expiry(tmp_path: Path) -> None:
@@ -77,13 +79,13 @@ def test_window_expiry(tmp_path: Path) -> None:
     with TestClient(app) as client:
         for _ in range(5):
             _login(client, "bad")
-        blocked = _login(client, "compulse-demo")
+        blocked = _login(client, "incubyte")
         assert blocked.status_code == 429
         assert blocked.headers["retry-after"] == "300"
         clock.now += 299
-        assert _login(client, "compulse-demo").status_code == 429
+        assert _login(client, "incubyte").status_code == 429
         clock.now += 2
-        assert _login(client, "compulse-demo").status_code == 200
+        assert _login(client, "incubyte").status_code == 200
 
 
 def test_per_ip_isolation_with_trusted_proxy(tmp_path: Path) -> None:
@@ -92,7 +94,7 @@ def test_per_ip_isolation_with_trusted_proxy(tmp_path: Path) -> None:
         for _ in range(5):
             _login(client, "bad", ip="1.1.1.1")
         assert _login(client, "bad", ip="1.1.1.1").status_code == 429
-        assert _login(client, "compulse-demo", ip="2.2.2.2").status_code == 200
+        assert _login(client, "incubyte", ip="2.2.2.2").status_code == 200
 
 
 def test_forwarded_header_ignored_by_default(tmp_path: Path) -> None:
@@ -116,7 +118,7 @@ def test_custom_limits(tmp_path: Path) -> None:
         {},
         {"app_secret": STRONG_SECRET},
         {"app_secret": "short", "hr_password": "real-password"},
-        {"app_secret": STRONG_SECRET, "hr_password": "compulse-demo"},
+        {"app_secret": STRONG_SECRET, "hr_password": "incubyte"},
     ],
 )
 def test_production_rejects_insecure(tmp_path: Path, overrides: dict[str, str]) -> None:

@@ -17,8 +17,8 @@ Salary management for ACME’s HR manager. The directory is seeded with 10,000 e
 - `docs/prompts/` — PR specs for the build
 
 ## Demo login
-- Email: `hr@acme.test`
-- Password: `compulse-demo`
+- Email: `ss@interview.chetan`
+- Password: `incubyte`
 
 The password is a demo default from `.env.example`. Change `APP_SECRET` and `HR_PASSWORD` before a public host.
 
@@ -37,7 +37,7 @@ Proxy host, in the nginx-proxy-manager service that is already running:
 
 About three minutes. Record against the running frontend.
 
-1. Open the site and log in as `hr@acme.test` / `compulse-demo`.
+1. Open the site and log in as `ss@interview.chetan` / `incubyte`.
 2. Search the directory, filter to one country, and open a person. Say that local pay is the stored base and variable amounts, and USD is local pay divided by the planning rate at the time it was saved.
 3. Change the salary with a reason and an effective date. Show the new audit row: local pay, USD, and the planning rate from that change.
 4. Submit the form again without reloading. The page says `Record was modified. Reload and try again.` and does not write a second audit row.

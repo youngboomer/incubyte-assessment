@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SECRET = "dev-secret-change-me"
-DEFAULT_PASSWORD = "compulse-demo"
+DEFAULT_PASSWORD = "incubyte"
 MIN_SECRET_LENGTH = 32
 
 
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./comppulse.db"
     app_secret: str = DEFAULT_SECRET
-    hr_email: str = "hr@acme.test"
+    hr_email: str = "ss@interview.chetan"
     hr_password: str = DEFAULT_PASSWORD
     hr_password_hash: str | None = None
     app_env: str = "development"

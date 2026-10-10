@@ -11,7 +11,7 @@ Unknown fields are ignored only where Pydantic defaults say so. Extra body field
 `POST /auth/login`
 
 ```json
-{ "email": "hr@acme.test", "password": "compulse-demo" }
+{ "email": "ss@interview.chetan", "password": "incubyte" }
 ```
 
 ```json
@@ -23,7 +23,7 @@ Wrong credentials: 401 `{ "detail": "Invalid credentials" }`.
 `GET /auth/me`
 
 ```json
-{ "email": "hr@acme.test", "name": "HR Manager" }
+{ "email": "ss@interview.chetan", "name": "HR Manager" }
 ```
 
 ## Health
