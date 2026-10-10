@@ -56,7 +56,12 @@ Wrong credentials: 401 `{ "detail": "Invalid credentials" }`.
 
 `GET /employees`
 
-Query: `q`, `department_id`, `country`, `currency`, `status`, `sort`, `direction`, `limit`, `cursor`.
+Query: `q`, `department_id`, `country`, `currency`, `status`, `level`, `salary_usd_min`, `salary_usd_max`, `sort`, `direction`, `limit`, `cursor`.
+
+- `status`: `active` or `terminated`. Any other value: 422.
+- `level`: one of the `levels` from `/reference`. Any other value: 422.
+- `salary_usd_min`, `salary_usd_max`: inclusive bounds on `salary_usd_scaled` (scale 2), compared numerically. Digits only, non-negative, within signed int64. Invalid value or `salary_usd_min` greater than `salary_usd_max`: 422.
+- All filters combine with AND, together with `q`, `sort` and `cursor`. `total` counts the filtered set. A cursor is bound to `sort` and `direction`, not to the filters, so keep the same filters while paging.
 
 - `sort`: `name`, `employee_number`, `department`, `country`, `title`, `base_salary`, `salary_usd`, `hire_date`. Default `name`.
 - `direction`: `asc` or `desc`. Default `asc`.
