@@ -195,6 +195,12 @@ def test_reset_replaces_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
             "VALUES ('XXX', 'Extra', 2, '1000000', '2026-01-01T00:00:00Z')"
         )
         connection.execute(_AUDIT_SQL, _audit_params(employee_id))
+        connection.execute(
+            "INSERT INTO employee_change_logs (employee_id, field, previous_value, new_value, "
+            "reason, effective_date, changed_by, created_at) "
+            "VALUES (?, 'job_title', 'a', 'b', 'Promotion', '2026-01-01', 'hr', '2026-01-01')",
+            (employee_id,),
+        )
         connection.commit()
         assert connection.execute("SELECT COUNT(*) FROM employees").fetchone() == (6,)
         assert connection.execute("SELECT COUNT(*) FROM compensation_audit_logs").fetchone() == (1,)
@@ -218,6 +224,10 @@ def test_reset_replaces_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
             "SELECT first_name FROM employees WHERE employee_number = 'EMP-00001'"
         ).fetchone() != ("Tampered",)
         assert connection.execute("SELECT COUNT(*) FROM compensation_audit_logs").fetchone() == (0,)
+        assert connection.execute("SELECT COUNT(*) FROM employee_change_logs").fetchone() == (0,)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'employee_change_logs_no_delete'"
+        ).fetchone() == (1,)
         currencies, countries, departments = _reference_rows(connection, skip_currency="XXX")
         assert tuple(currencies) == _CURRENCIES
         assert tuple(countries) == _COUNTRIES
