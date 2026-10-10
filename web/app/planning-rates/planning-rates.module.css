@@ -1,0 +1,74 @@
+.page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.explain {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.code {
+  font-weight: 600;
+}
+
+.name {
+  margin-left: var(--space-2);
+  font-weight: 400;
+  color: var(--text-subtle);
+}
+
+.rate {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.fixed {
+  color: var(--text-subtle);
+}
+
+.editor {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  width: 100%;
+  justify-items: end;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 280px;
+  text-align: left;
+}
+
+.saved {
+  width: 100%;
+  max-width: 280px;
+  text-align: left;
+}
+
+.rateField {
+  min-width: 0;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 719px) {
+  .editor,
+  .form,
+  .saved {
+    max-width: none;
+  }
+
+  .editor button {
+    min-height: var(--tap);
+    min-width: var(--tap);
+  }
+}
