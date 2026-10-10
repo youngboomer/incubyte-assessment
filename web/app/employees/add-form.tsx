@@ -1,148 +1,205 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import type { Country, Currency, Department } from "../../lib/types";
+import { useActionState, useMemo, useState } from "react";
+import { Button, Card, Input, LinkButton, MoneyInput, Notice, Select } from "../../components/ui";
+import type { Reference } from "../../lib/types";
 import { addEmployeeAction, type AddEmployeeState } from "./actions";
-import styles from "./employees.module.css";
+import styles from "./add-employee.module.css";
+import { previewTotal } from "./new/preview";
 
-type AddFormProps = {
-  departments: Department[];
-  countries: Country[];
-  currencies: Currency[];
-  levels: string[];
-  statuses: string[];
+export type AddFormProps = {
+  reference: Reference;
+  today: string;
 };
 
-const initialState: AddEmployeeState = { error: "" };
-
-export function AddForm({
-  departments,
-  countries,
-  currencies,
-  levels,
-  statuses,
-}: AddFormProps) {
-  const [state, formAction, pending] = useActionState(addEmployeeAction, initialState);
-  const [countryCode, setCountryCode] = useState("");
-  const currency = currencyFor(countries, currencies, countryCode);
-  const defaultStatus = statuses.includes("active") ? "active" : "";
-
-  return (
-    <form action={formAction} className={styles.add}>
-      <h2>Add employee</h2>
-      <label>
-        First name
-        <input name="first_name" autoComplete="given-name" required />
-      </label>
-      <label>
-        Last name
-        <input name="last_name" autoComplete="family-name" required />
-      </label>
-      <label>
-        Email
-        <input name="email" type="email" autoComplete="email" required />
-      </label>
-      <label>
-        Job title
-        <input name="job_title" autoComplete="organization-title" required />
-      </label>
-      <label>
-        Department
-        <select name="department_id" defaultValue="" required>
-          <option value="">Select department</option>
-          {departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Country
-        <select
-          name="country_code"
-          value={countryCode}
-          required
-          onChange={(event) => setCountryCode(event.target.value)}
-        >
-          <option value="">Select country</option>
-          {countries.map((country) => (
-            <option key={country.code} value={country.code}>
-              {country.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={styles.srOnly}>
-        Currency minor scale
-        <input type="hidden" name="minor_scale" value={currency?.minor_scale ?? ""} />
-      </label>
-      <label>
-        Level
-        <select name="level" defaultValue="" required>
-          <option value="">Select level</option>
-          {levels.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Status
-        <select name="status" defaultValue={defaultStatus} required>
-          {defaultStatus === "" ? <option value="">Select status</option> : null}
-          {statuses.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Base salary
-        <span className={styles.hint}>
-          {currency
-            ? `Major units in ${currency.code}, for example 120000.50`
-            : "Major units, for example 120000.50"}
-        </span>
-        <input name="base_salary" inputMode="decimal" autoComplete="off" required />
-      </label>
-      <label>
-        Variable pay
-        <span className={styles.hint}>
-          {currency ? `Major units in ${currency.code}. May be 0.` : "Major units. May be 0."}
-        </span>
-        <input name="variable_pay" inputMode="decimal" autoComplete="off" defaultValue="0" />
-      </label>
-      <label>
-        Hire date
-        <input name="hire_date" type="date" required />
-      </label>
-      <label>
-        Compensation effective date
-        <input name="comp_effective_date" type="date" required />
-      </label>
-      <button type="submit" disabled={pending} aria-busy={pending}>
-        Add employee
-      </button>
-      {state.error ? (
-        <p className={styles.error} role="alert">
-          {state.error}
-        </p>
-      ) : null}
-    </form>
-  );
+function symbolFor(code: string): string {
+  try {
+    const parts = new Intl.NumberFormat("en", {
+      style: "currency",
+      currency: code,
+      currencyDisplay: "narrowSymbol",
+    }).formatToParts(0);
+    return parts.find((part) => part.type === "currency")?.value ?? code;
+  } catch {
+    return code;
+  }
 }
 
-function currencyFor(
-  countries: Country[],
-  currencies: Currency[],
-  countryCode: string,
-): Currency | undefined {
-  const country = countries.find((item) => item.code === countryCode);
-  if (!country) {
-    return undefined;
-  }
-  return currencies.find((item) => item.code === country.currency_code);
+export function AddEmployeeForm({ reference, today }: AddFormProps) {
+  const initial: AddEmployeeState = {
+    values: { hire_date: today, comp_effective_date: today, status: "active" },
+    fieldErrors: {},
+    formError: null,
+    attempt: 0,
+  };
+  const [state, formAction, pending] = useActionState(addEmployeeAction, initial);
+  const values = state.values;
+  const errors = state.fieldErrors;
+
+  const [country, setCountry] = useState(values["country_code"] ?? "");
+  const [base, setBase] = useState(values["base_salary"] ?? "");
+  const [variable, setVariable] = useState(values["variable_pay"] ?? "");
+
+  const currency = useMemo(() => {
+    const code = reference.countries.find((item) => item.code === country)?.currency_code;
+    return reference.currencies.find((item) => item.code === code) ?? null;
+  }, [reference, country]);
+
+  const preview = useMemo(
+    () =>
+      currency === null
+        ? null
+        : previewTotal(base, variable, {
+            code: currency.code,
+            minorScale: currency.minor_scale,
+            unitsPerUsdScaled: currency.units_per_usd_scaled,
+            unitsPerUsdScale: currency.units_per_usd_scale,
+          }),
+    [currency, base, variable],
+  );
+
+  const symbol = currency === null ? "" : symbolFor(currency.code);
+
+  return (
+    <form action={formAction} className={styles.form} noValidate>
+      {state.formError ? <Notice tone="error">{state.formError}</Notice> : null}
+
+      <Card>
+        <fieldset className={styles.section}>
+          <legend className={styles.legend}>Person</legend>
+          <div className={styles.grid}>
+            <Input name="first_name" label="First name" required autoComplete="off" defaultValue={values["first_name"]} error={errors["first_name"]} />
+            <Input name="last_name" label="Last name" required autoComplete="off" defaultValue={values["last_name"]} error={errors["last_name"]} />
+          </div>
+          <Input name="email" label="Email" type="email" required autoComplete="off" defaultValue={values["email"]} error={errors["email"]} />
+        </fieldset>
+      </Card>
+
+      <Card>
+        <fieldset className={styles.section}>
+          <legend className={styles.legend}>Role</legend>
+          <Input name="job_title" label="Job title" required autoComplete="off" defaultValue={values["job_title"]} error={errors["job_title"]} />
+          <div className={styles.grid}>
+            <Select key={`dept-${state.attempt}`} name="department_id" label="Department" required defaultValue={values["department_id"] ?? ""} error={errors["department_id"]}>
+              <option value="" disabled>
+                Choose a department
+              </option>
+              {reference.departments.map((department) => (
+                <option key={department.id} value={String(department.id)}>
+                  {department.name}
+                </option>
+              ))}
+            </Select>
+            <Select key={`level-${state.attempt}`} name="level" label="Level" required defaultValue={values["level"] ?? ""} error={errors["level"]}>
+              <option value="" disabled>
+                Choose a level
+              </option>
+              {reference.levels.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </Select>
+            <Select key={`status-${state.attempt}`} name="status" label="Status" required defaultValue={values["status"] ?? "active"} error={errors["status"]}>
+              {reference.statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </fieldset>
+      </Card>
+
+      <Card>
+        <fieldset className={styles.section}>
+          <legend className={styles.legend}>Location</legend>
+          <Select
+            name="country_code"
+            label="Country"
+            required
+            key={`country-${state.attempt}`}
+            defaultValue={country}
+            onChange={(event) => setCountry(event.target.value)}
+            error={errors["country_code"]}
+            hint={currency ? `Paid in ${currency.code}` : "Pay is entered in the country's currency."}
+          >
+            <option value="" disabled>
+              Choose a country
+            </option>
+            {reference.countries.map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
+          </Select>
+        </fieldset>
+      </Card>
+
+      <Card>
+        <fieldset className={styles.section}>
+          <legend className={styles.legend}>Pay</legend>
+          <div className={styles.grid}>
+            <MoneyInput
+              name="base_salary"
+              label="Base salary"
+              required
+              currencySymbol={symbol || "–"}
+              disabled={currency === null}
+              placeholder="0.00"
+              key={`base-${state.attempt}`}
+              defaultValue={base}
+              onChange={(event) => setBase(event.target.value)}
+              error={errors["base_salary"]}
+              hint={currency ? `Annual, in ${currency.code}` : "Choose a country first."}
+            />
+            <MoneyInput
+              name="variable_pay"
+              label="Variable pay"
+              currencySymbol={symbol || "–"}
+              disabled={currency === null}
+              placeholder="0.00"
+              key={`variable-${state.attempt}`}
+              defaultValue={variable}
+              onChange={(event) => setVariable(event.target.value)}
+              error={errors["variable_pay"]}
+              hint="Bonus or commission. Leave empty for none."
+            />
+          </div>
+          {preview ? (
+            <p className={styles.preview} aria-live="polite">
+              Total {preview.local}, about {preview.usd}
+            </p>
+          ) : null}
+        </fieldset>
+      </Card>
+
+      <Card>
+        <fieldset className={styles.section}>
+          <legend className={styles.legend}>Dates</legend>
+          <div className={styles.grid}>
+            <Input name="hire_date" label="Hire date" type="date" required defaultValue={values["hire_date"]} error={errors["hire_date"]} />
+            <Input
+              name="comp_effective_date"
+              label="Effective date"
+              type="date"
+              required
+              defaultValue={values["comp_effective_date"]}
+              error={errors["comp_effective_date"]}
+              hint="When this pay takes effect."
+            />
+          </div>
+        </fieldset>
+      </Card>
+
+      <div className={styles.actions}>
+        <Button type="submit" loading={pending}>
+          Add employee
+        </Button>
+        <LinkButton href="/employees" variant="quiet">
+          Cancel
+        </LinkButton>
+      </div>
+    </form>
+  );
 }
