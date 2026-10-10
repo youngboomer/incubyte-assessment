@@ -8,7 +8,7 @@ Unknown fields are ignored only where Pydantic defaults say so. Extra body field
 
 Interactive docs (`/docs`, `/redoc`, `/openapi.json`) are off when `APP_ENV=production`.
 
-Input length limits (longer is 422): login email 254, password 256; employee first and last name 100, email 254, job title 120, country code 8, level and status 32; `reason` 500; `*_scaled` money strings and the fx rate 20; query `q` 200, `country` and `currency` 8, `salary_usd_min` and `salary_usd_max` 20, `cursor` 512; audit `employee_id` 64, `since` and `until` 40, `changed_by` 254.
+Input length limits (longer is 422): login email 254, password 256; employee first and last name 100, email 254, job title 120, country code 8, level and status 32; `reason` 500; `*_scaled` money strings and the fx rate 20; query `q` 200, `country` and `currency` 8, `salary_usd_min` and `salary_usd_max` 20, `cursor` 512; audit and changes `employee_id` 64, `since` and `until` 40, `changed_by` 254; changes `field` 32.
 
 ## Auth
 
@@ -247,6 +247,45 @@ Each item has every field of the per-employee audit item above, plus `employee_i
       "effective_date": "2026-04-01",
       "changed_by": "hr@acme.test",
       "created_at": "2026-04-01T09:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+
+## Changes feed
+
+`GET /changes` returns detail and status changes across all employees from `employee_change_logs`, newest first (`created_at` desc, then `id` desc). Requires the HR bearer token. Read-only. Pay changes are in the audit feed.
+
+Query: `employee_id`, `department_id`, `field`, `since`, `until`, `changed_by`, `limit`, `cursor`.
+
+- `field`: one of `first_name`, `last_name`, `email`, `job_title`, `department_id`, `level`, `status`. Anything else: 422.
+- `since`, `until`: ISO dates `YYYY-MM-DD`, inclusive, compared with `effective_date`. Invalid date or `since` after `until`: 422.
+- `changed_by`: exact match. `employee_id` and `department_id` match exactly; an unknown id returns an empty page. `department_id` filters on the employee's current department.
+- `limit`: 1–100. Default 50.
+- `cursor`: opaque and signed. A malformed, foreign (including a cursor from `/audit` or `/employees`) or tampered cursor: 422. Keep the same filters while paging.
+
+`department` is the employee's current department. Values are the stored text. For `field` `department_id` they are department ids, and `previous_label` and `new_label` carry the department names (`null` when the id no longer resolves). For every other field both labels are `null`.
+
+```json
+{
+  "items": [
+    {
+      "id": 12,
+      "employee_id": "6b1d1a4e-8c0a-4f0e-9c2a-1a2b3c4d5e6f",
+      "employee_number": "EMP-00001",
+      "employee_name": "Ada Okoye",
+      "department": { "id": 1, "name": "Engineering" },
+      "field": "level",
+      "previous_value": "IC5",
+      "new_value": "M1",
+      "previous_label": null,
+      "new_label": null,
+      "reason": "Promotion",
+      "effective_date": "2026-05-01",
+      "changed_by": "ss@interview.chetan",
+      "created_at": "2026-05-01T09:00:00Z"
     }
   ],
   "next_cursor": null

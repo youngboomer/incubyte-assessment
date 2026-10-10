@@ -4,6 +4,7 @@
 from app.routers.analytics import router as analytics_router
 from app.routers.audit import router as audit_router
 from app.routers.auth import router as auth_router
+from app.routers.changes import router as changes_router
 from app.routers.employees import router as employees_router
 from app.routers.fx import router as fx_router
 from app.routers.health import router as health_router
@@ -17,12 +18,14 @@ routers = [
     analytics_router,
     fx_router,
     audit_router,
+    changes_router,
 ]
 
 __all__ = [
     "analytics_router",
     "audit_router",
     "auth_router",
+    "changes_router",
     "employees_router",
     "fx_router",
     "health_router",
