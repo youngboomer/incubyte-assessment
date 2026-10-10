@@ -22,7 +22,7 @@ def test_health(tmp_path: Path) -> None:
         assert client.get("/employees").status_code == 401
         assert client.get("/analytics/overview").status_code == 401
         assert client.get("/fx").status_code == 401
-        login = client.post("/auth/login", json={"email": "hr@acme.test", "password": "x"})
+        login = client.post("/auth/login", json={"email": "ss@interview.chetan", "password": "x"})
         assert login.status_code == 401
     assert db_path.exists()
 
@@ -40,8 +40,8 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings()
     assert settings.database_url == "sqlite+aiosqlite:///./comppulse.db"
     assert settings.app_secret == "dev-secret-change-me"
-    assert settings.hr_email == "hr@acme.test"
-    assert settings.hr_password == "compulse-demo"
+    assert settings.hr_email == "ss@interview.chetan"
+    assert settings.hr_password == "incubyte"
     assert settings.token_max_age_seconds == 43200
     assert settings.seed_count == 10000
 
