@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { backendFetch } from "./api";
+import { logout } from "./endpoints";
 import { SESSION_COOKIE, clearedSessionCookieOptions, sessionCookieOptions } from "./session";
 import type { LoginResponse } from "./types";
 
@@ -52,6 +53,10 @@ export async function loginAction(
 
 export async function logoutAction(): Promise<void> {
   const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (token) {
+    await logout(token).catch(() => undefined);
+  }
   jar.set(SESSION_COOKIE, "", clearedSessionCookieOptions);
   redirect("/login");
 }
