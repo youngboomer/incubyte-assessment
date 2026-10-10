@@ -119,6 +119,7 @@ def test_custom_limits(tmp_path: Path) -> None:
         {"app_secret": STRONG_SECRET},
         {"app_secret": "short", "hr_password": "real-password"},
         {"app_secret": STRONG_SECRET, "hr_password": "incubyte"},
+        {"app_secret": STRONG_SECRET, "hr_password": "real-password"},
     ],
 )
 def test_production_rejects_insecure(tmp_path: Path, overrides: dict[str, str]) -> None:
@@ -128,8 +129,13 @@ def test_production_rejects_insecure(tmp_path: Path, overrides: dict[str, str]) 
 
 def test_production_accepts_strong(tmp_path: Path) -> None:
     strong = {"app_env": "production", "app_secret": STRONG_SECRET}
-    create_app(_settings(tmp_path, hr_password="real-password", **strong))
     create_app(_settings(tmp_path, hr_password_hash=hash_password("pw"), **strong))
+
+
+def test_production_refuses_plaintext_password(tmp_path: Path) -> None:
+    strong = {"app_env": "production", "app_secret": STRONG_SECRET}
+    with pytest.raises(ValueError, match="insecure_config: .*HR_PASSWORD_HASH"):
+        create_app(_settings(tmp_path, hr_password="real-password", **strong))
 
 
 def test_non_production_allows_defaults(tmp_path: Path) -> None:

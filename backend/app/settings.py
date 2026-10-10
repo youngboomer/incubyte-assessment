@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         problems = []
         if self.app_secret == DEFAULT_SECRET or len(self.app_secret) < MIN_SECRET_LENGTH:
             problems.append(f"APP_SECRET must be non-default, {MIN_SECRET_LENGTH}+ chars")
-        if not self.hr_password_hash and self.hr_password == DEFAULT_PASSWORD:
-            problems.append("HR_PASSWORD must not be the demo default (or set HR_PASSWORD_HASH)")
+        if not self.hr_password_hash:
+            problems.append("HR_PASSWORD_HASH must be set (plaintext HR_PASSWORD is refused)")
         if problems:
             raise ValueError("insecure_config: " + "; ".join(problems))
