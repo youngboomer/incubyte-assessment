@@ -1,0 +1,66 @@
+.compare {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+}
+
+.compare dt {
+  font-weight: 600;
+}
+
+.compare dd {
+  margin: 0;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-4);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.page {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.summaryList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.summary {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--teal-100);
+  border-radius: var(--radius-card);
+  background: var(--teal-50);
+  color: var(--teal-900);
+  font-size: 13px;
+}
+
+.summaryMuted {
+  composes: summary;
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--text-subtle);
+}
+
+.hidden {
+  display: none;
+}
